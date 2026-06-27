@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-0306
+最后更新时间：2026-06-28-0325
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -15,8 +15,8 @@
 | 阶段 | 内容 | 状态 | 备注 |
 |---|---|---|---|
 | S0 需求确认 | 多轮对话澄清需求，产出 `docs/PRD.md` | ✅ 完成（PRD 已定稿） | 2026-06-28 用户确认通过 |
-| S1 架构设计 | 产出 `docs/ARCHITECTURE.md`（模块边界/关键流程/技术细节） | 🟡 进行中 | PRD 评审通过后启动 |
-| S2 实现计划 | 基于 PRD 拆解实现计划（里程碑/任务/验证项） | ⏳ 未开始 | 依赖 S1 |
+| S1 架构设计 | 产出 `docs/ARCHITECTURE.md`（模块边界/关键流程/技术细节） | ✅ 完成 | 2026-06-28 产出架构文档 |
+| S2 实现计划 | 基于 PRD 拆解实现计划（里程碑/任务/验证项） | 🟡 进行中 | 依赖 S1 |
 | S3 核心实现 | Tauri 骨架 + 设备/串口层 + 工具链层 + AI 适配层 + 编排器 | ⏳ 未开始 | |
 | S4 闭环验证 | 双板 S3 互连环境验证全自动流程 | ⏳ 未开始 | |
 | S5 打包发布 | Windows 安装包、示例库、文档完善 | ⏳ 未开始 | |
@@ -59,17 +59,29 @@
 
 ### 2B.2 环境侦察记录（2026-06-28-0306）
 - 工具链：git 2.53 / node v24.15 / npm 11.12 / rustc 1.95 / cargo 1.95 / python 3.14 均已就绪；
-- **arduino-cli、esptool 未安装**，需安装用于开发自测；
-- 已连接两块 ESP32-S3（USB-Enhanced-SERIAL CH343，VID_1A86 PID_55D3）：**COM4、COM8**。
-- [ ] 评审通过后，PRD 状态由「待评审」转「已定稿」，进入 S1 架构设计阶段。
+- 已安装 esptool v5.3.0（`py -m esptool`）、arduino-cli 1.1.1（位于 `tools/arduino-cli/`，仅供开发自测）；
+- 已安装 arduino-esp32 核心包 3.3.10（含 S3/S2/C3 等编译库）；
+- 已连接两块 ESP32-S3（USB-Enhanced-SERIAL CH343，VID_1A86 PID_55D3）：**COM4**（MAC a4:cb:8f:d8:a2:e0）、**COM8**（MAC 98:a3:16:e6:46:74），均 16MB Flash / 8MB PSRAM。
 
 ---
 
 ## 3. 验证记录
 
-> 本阶段为需求确认，无代码/硬件验证。后续阶段验证记录按 AGENTS.md 模板追加。
-
-（暂无）
+### 验证 2026-06-28-0306：ESP32-S3 编译/烧录/串口闭环链路自测
+- **验证时间**：2026-06-28-0306
+- **验证对象**：arduino-cli 编译 + esptool 烧录 + pyserial 串口读取 的完整闭环（Talk2ESP 技术选型可行性）
+- **验证环境**：Windows 10，arduino-cli 1.1.1 + arduino-esp32 3.3.10，esptool v5.3.0，pyserial 3.5，ESP32-S3 @ COM4
+- **操作步骤**：
+  1. 编写最小 Blink 程序（GPIO2 闪烁 + 串口输出 `TEST:PASS blink` 测试桩标记），fqbn=`esp32:esp32:esp32s3`；
+  2. `arduino-cli compile` 编译；
+  3. `arduino-cli upload -p COM4` 烧录；
+  4. pyserial 以 115200 读取 COM4 输出 6 秒。
+- **观察现象**：
+  - 编译成功，占用 313736 字节（23% Flash）；
+  - 烧录成功，写入 172458 字节（压缩后），2.5 秒完成，Hash 校验通过；
+  - 串口正确收到启动日志及连续 `TEST:START blink` / `TEST:PASS blink` / `TEST:END` 标记。
+- **结论**：通过
+- **遗留问题**：无。技术链路（编译→烧录→串口读取→测试桩判定）已验证可行，为 Talk2ESP 核心架构选型提供实证支撑。
 
 ---
 
@@ -95,3 +107,25 @@
 - **备选方案**：将其演化为产品的「验证模式」（需用户有两块板并互连）——门槛高，v1 不做。
 - **影响**：v1 产品功能聚焦单板全自动闭环；双板交叉验证仅出现在 Talk2ESP 开发自测流程中。
 - **回滚条件或后续观察点**：若用户后续明确希望产品支持双板联动验证，可作为 P2+ 迭代特性重新评估。
+
+### 决策 2026-06-28-0325：技术栈选型（Tauri 2.x + serialport + tauri-plugin-shell + 双 LLM SDK）
+- **时间**：2026-06-28-0325
+- **背景**：S1 架构设计阶段需确定 Rust 后端各能力的具体 crate 与 Tauri 版本，影响全部后续实现。
+- **决策**：
+  1. Tauri 2.x（非 1.x），代码进 `src-tauri/src/lib.rs`，权限走 capabilities；
+  2. 串口用 `serialport` 4.x（枚举含 VID/PID），异步用 `spawn_blocking` + Channel；
+  3. 外部进程用 `tauri-plugin-shell` 的 `Command::spawn()` 流式捕获；
+  4. 流式 IPC 一律用 `tauri::ipc::Channel<T>`（event 仅低频通知）；
+  5. LLM 用 `async-openai`（OpenAI 兼容，含国产）+ `anthropic-sdk-rust`（Claude），统一 `LlmProvider` trait；
+  6. arduino-cli/esptool 作为 sidecar 经 `bundle.externalBin` 打包。
+- **备选方案**：Electron（体积大，与轻量化目标冲突）、`tokio-serial`（更复杂）、reqwest 自解析 SSE（需自实现重试/限流）。
+- **影响**：目录结构、权限配置、所有流式数据通道设计定型；为「开箱即用」奠定基础。
+- **回滚条件或后续观察点**：若 `serialport` 在 Windows 高波特率下丢字节，改用 `tokio-serial`；若某国产 LLM 的 OpenAI 兼容接口偏差大，单独适配。
+
+### 决策 2026-06-28-0325：引脚黑名单分级（Error 阻断 / Warn 提示）
+- **时间**：2026-06-28-0325
+- **背景**：「全自动生成代码」场景需防止 AI 误用危险引脚损坏硬件，需明确分级标准。
+- **决策**：按「是否会导致硬件损坏/芯片无法启动」分级——Flash/PSRAM 物理引脚、VDD_SPI 电压选择脚（S3 GPIO45）为 Error 级阻断；Strapping/USB/JTAG/UART0 为 Warn 级提示。详见 `docs/ARCHITECTURE.md` 第 6 节。
+- **备选方案**：Strapping 引脚一刀切 Error——但大量合法 Arduino 例程（BOOT 键/板载 LED）使用 GPIO0/GPIO9，过严会误伤，故用 Warn。
+- **影响**：`chips/*.toml` 字段定义、safety 层校验逻辑、AI prompt 注入内容定型。
+- **回滚条件或后续观察点**：S3 Octal PSRAM 变体（S3R8/R8V）的 GPIO33–37 在无法识别型号时暂入 Warn，后续若可准确识别则升级为 Error。
