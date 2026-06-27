@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-0337
+最后更新时间：2026-06-28-0345
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -26,7 +26,7 @@
 | 里程碑 | 内容 | 状态 | 验证 |
 |---|---|---|---|
 | M0 | Tauri 骨架 + 前后端通信打通 | ✅ 完成 | scan_ports单测通过+GUI启动验证 |
-| M1 | 设备/串口层（型号识别+监控读写） | ⏳ 未开始 | |
+| M1 | 设备/串口层（型号识别+监控读写） | ✅ 完成 | scan_devices+串口回显端到端测试通过 |
 | M2 | 工具链层（arduino-cli编译+esptool烧录） | ⏳ 未开始 | |
 | M3 | AI 适配层（OpenAI兼容+Claude） | ⏳ 未开始 | |
 | M4 | 安全层 + 型号描述表 | ⏳ 未开始 | |
@@ -115,6 +115,23 @@
 - **遗留问题**：
   1. GUI 渲染现象（点「刷新串口」看到 COM4/COM8 表格、点「开始 Tick」看到 1→5）属界面交互，按 AGENTS.md 需人工确认窗口现象，当前仅验证到进程启动+前端编译+后端单测；
   2. 后续 M7 前端完整界面阶段将做更全面的 GUI 自动化验证。
+
+### 验证 2026-06-28-0345：M1 设备/串口层（型号识别 + 串口监控读写）
+- **验证时间**：2026-06-28-0345
+- **验证对象**：M1 里程碑——scan_devices 型号识别 + SerialMonitor 串口监控（可读可发）
+- **验证环境**：Windows 10，Tauri 2.11.3 + serialport 4.9，两块 ESP32-S3 @ COM4/COM8，COM4 已烧录回显程序
+- **操作步骤**：
+  1. 实现 `device/scanner.rs`：枚举 USB 串口 + 调 `py -m esptool flash-id` 解析 chip/MAC/flash_size；
+  2. 实现 `device/serial_monitor.rs`：start_with_callback 读线程阻塞读 + try_clone 写半部 + send/stop/active_ports，支持多设备并行；
+  3. 烧录回显程序到 COM4（收到行后回显 `ECHO:<内容>`）；
+  4. `cargo test scan_devices_detects_esp32s3` 验证型号识别；
+  5. `cargo test monitor_send_and_receive_echo` 验证 SerialMonitor start→send→回调收到 ECHO:hello→stop 全链路。
+- **观察现象**：
+  - `scan_devices_detects_esp32s3` 通过：探测出 esp32s3，MAC 与 flash_size(16MB) 均填充；
+  - `monitor_send_and_receive_echo` 通过：send("hello") 后回调收到 `ECHO:hello`，证明读线程解码推送 + 写半部发送均正常；
+  - 全量 5 个测试通过，无回归无警告。
+- **结论**：通过
+- **遗留问题**：无。设备/串口层核心能力（型号识别、多设备串口监控读写）已实证可用。
 
 ---
 
