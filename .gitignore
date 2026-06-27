@@ -1,31 +1,41 @@
 # esptool 资料库（只读参考资料，不入产品依赖）
 esptool_esp32_research_pack/
 
+# 开发自测工具（arduino-cli/esptool 等，不入仓库）
+tools/
+
+# 项目运行时生成的工程文件
+projects/
+
 # 依赖与构建产物
 node_modules/
 dist/
+dist-ssr/
 target/
 build/
-
-# Tauri
 src-tauri/target/
-
-# 编辑器与系统
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
 
 # 本地环境与敏感配置
 .env
 .env.local
 *.local
 
-# 项目运行时生成的工程文件
-projects/
-
-# 开发自测工具（arduino-cli/esptool 等，不入仓库）
-tools/
-
 # 日志
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 编辑器与系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
