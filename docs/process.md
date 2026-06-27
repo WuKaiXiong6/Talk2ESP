@@ -59,17 +59,29 @@
 
 ### 2B.2 环境侦察记录（2026-06-28-0306）
 - 工具链：git 2.53 / node v24.15 / npm 11.12 / rustc 1.95 / cargo 1.95 / python 3.14 均已就绪；
-- **arduino-cli、esptool 未安装**，需安装用于开发自测；
-- 已连接两块 ESP32-S3（USB-Enhanced-SERIAL CH343，VID_1A86 PID_55D3）：**COM4、COM8**。
-- [ ] 评审通过后，PRD 状态由「待评审」转「已定稿」，进入 S1 架构设计阶段。
+- 已安装 esptool v5.3.0（`py -m esptool`）、arduino-cli 1.1.1（位于 `tools/arduino-cli/`，仅供开发自测）；
+- 已安装 arduino-esp32 核心包 3.3.10（含 S3/S2/C3 等编译库）；
+- 已连接两块 ESP32-S3（USB-Enhanced-SERIAL CH343，VID_1A86 PID_55D3）：**COM4**（MAC a4:cb:8f:d8:a2:e0）、**COM8**（MAC 98:a3:16:e6:46:74），均 16MB Flash / 8MB PSRAM。
 
 ---
 
 ## 3. 验证记录
 
-> 本阶段为需求确认，无代码/硬件验证。后续阶段验证记录按 AGENTS.md 模板追加。
-
-（暂无）
+### 验证 2026-06-28-0306：ESP32-S3 编译/烧录/串口闭环链路自测
+- **验证时间**：2026-06-28-0306
+- **验证对象**：arduino-cli 编译 + esptool 烧录 + pyserial 串口读取 的完整闭环（Talk2ESP 技术选型可行性）
+- **验证环境**：Windows 10，arduino-cli 1.1.1 + arduino-esp32 3.3.10，esptool v5.3.0，pyserial 3.5，ESP32-S3 @ COM4
+- **操作步骤**：
+  1. 编写最小 Blink 程序（GPIO2 闪烁 + 串口输出 `TEST:PASS blink` 测试桩标记），fqbn=`esp32:esp32:esp32s3`；
+  2. `arduino-cli compile` 编译；
+  3. `arduino-cli upload -p COM4` 烧录；
+  4. pyserial 以 115200 读取 COM4 输出 6 秒。
+- **观察现象**：
+  - 编译成功，占用 313736 字节（23% Flash）；
+  - 烧录成功，写入 172458 字节（压缩后），2.5 秒完成，Hash 校验通过；
+  - 串口正确收到启动日志及连续 `TEST:START blink` / `TEST:PASS blink` / `TEST:END` 标记。
+- **结论**：通过
+- **遗留问题**：无。技术链路（编译→烧录→串口读取→测试桩判定）已验证可行，为 Talk2ESP 核心架构选型提供实证支撑。
 
 ---
 

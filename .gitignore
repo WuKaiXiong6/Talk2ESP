@@ -24,5 +24,8 @@ Thumbs.db
 # 项目运行时生成的工程文件
 projects/
 
+# 开发自测工具（arduino-cli/esptool 等，不入仓库）
+tools/
+
 # 日志
 *.log
