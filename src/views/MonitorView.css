@@ -1,6 +1,6 @@
 /* 文件路径：src/views/MonitorView.css */
-/* 文件作用：串口监控视图样式——工具栏/输出着色/发送区历史 */
-/* 最后更新时间：2026-06-28-1245 */
+/* 文件作用：串口监控视图样式——多标签/工具栏/输出着色/发送区增强/数据图表 */
+/* 最后更新时间：2026-06-29-0130 */
 
 .monitor-view { display: flex; flex-direction: column; gap: var(--space-3); }
 
@@ -99,3 +99,89 @@
 }
 
 .send-history-item:hover { background: var(--color-primary-light); color: var(--color-primary); }
+
+/* #38 多标签栏 */
+.monitor-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--color-border-light);
+  padding-bottom: var(--space-1);
+}
+.monitor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border: 1px solid var(--color-border-light);
+  border-bottom: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-surface);
+  position: relative;
+  top: 1px;
+}
+.monitor-tab.active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+.monitor-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6fd98a;
+  display: inline-block;
+}
+.monitor-tab-close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+}
+.monitor-tab-close:hover { background: var(--color-danger-light); color: var(--color-danger); }
+.monitor-tab-add {
+  border: 1px dashed var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 2px 10px;
+  font-size: 16px;
+  line-height: 1;
+}
+.monitor-tab-add:hover { color: var(--color-primary); border-color: var(--color-primary); }
+
+/* #36 发送区选项 */
+.send-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.send-line-ending {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+}
+
+/* #39 数据图表 */
+.serial-chart { padding: var(--space-2) var(--space-3); }
+.serial-chart .chart-title {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+.serial-chart canvas {
+  background: var(--color-bg-code);
+  border-radius: var(--radius-sm);
+  display: block;
+}

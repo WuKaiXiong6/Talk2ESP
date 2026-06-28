@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/device/serial_monitor.rs
 // 文件作用：串口监控，实时读取推 Channel + 手动发送数据，多设备并行管理；#41 断开自动重连
-// 最后更新时间：2026-06-28-1320
+// 最后更新时间：2026-06-29-0130
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -240,17 +240,23 @@ impl SerialMonitor {
 
     /// 向某端口发送一行数据（自动补换行）
     pub fn send(&self, port: &str, data: &str) -> Result<(), String> {
-        let mut handles = self.handles.lock().unwrap();
-        let handle = handles
-            .get_mut(port)
-            .ok_or_else(|| format!("端口 {port} 未打开监控"))?;
         let mut payload = data.as_bytes().to_vec();
         if !data.ends_with('\n') {
             payload.push(b'\n');
         }
+        self.send_raw(port, &payload)
+    }
+
+    /// #36 发送原始字节：由调用方决定换行符/hex 解码，后端不再追加换行
+    /// 既保持 send() 既有行为（自动加 \n），又支持换行选择与十六进制发送
+    pub fn send_raw(&self, port: &str, payload: &[u8]) -> Result<(), String> {
+        let mut handles = self.handles.lock().unwrap();
+        let handle = handles
+            .get_mut(port)
+            .ok_or_else(|| format!("端口 {port} 未打开监控"))?;
         handle
             .writer
-            .write_all(&payload)
+            .write_all(payload)
             .map_err(|e| format!("写入 {port} 失败: {e}"))?;
         handle.writer.flush().map_err(|e| format!("flush {port} 失败: {e}"))?;
         Ok(())

@@ -118,6 +118,18 @@ fn send_serial(
     monitor.send(&port, &data)
 }
 
+/// #36 发送原始字节：前端按需拼接换行符(CRLF/LF)或解析十六进制后传入
+/// 既保持 send_serial 既有行为，又支持换行选择与十六进制发送
+#[tauri::command]
+fn send_serial_raw(
+    port: String,
+    bytes: Vec<u8>,
+    monitor: State<'_, Mutex<SerialMonitor>>,
+) -> Result<(), String> {
+    let monitor = monitor.lock().unwrap();
+    monitor.send_raw(&port, &bytes)
+}
+
 /// M1：停止某端口监控
 #[tauri::command]
 fn stop_monitor(port: String, monitor: State<'_, Mutex<SerialMonitor>>) -> Result<(), String> {
@@ -722,6 +734,7 @@ pub fn run() {
             detect_baud,
             start_monitor,
             send_serial,
+            send_serial_raw,
             stop_monitor,
             active_monitors,
             compile_sketch,
