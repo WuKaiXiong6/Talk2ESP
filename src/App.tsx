@@ -21,6 +21,8 @@ function App() {
   const [running, setRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [currentState, setCurrentState] = useState<string>('');
+  const [progress, setProgress] = useState<{ percent: number; message: string }>({ percent: 0, message: '' });
+  const [generatedCode, setGeneratedCode] = useState<{ main_ino: string; explanation: string } | null>(null);
   const [outcome, setOutcome] = useState<PipelineOutcome | null>(null);
   const [chatHistory, setChatHistory] = useState<ConversationMessage[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -90,6 +92,8 @@ function App() {
     setLogs([]);
     setOutcome(null);
     setCurrentState('coding');
+    setProgress({ percent: 5, message: '启动中…' });
+    setGeneratedCode(null);
     addLog(`启动全自动流水线 (端口=${selectedPort}, 芯片=${selectedChip})`);
 
     // 构造需求确认书（简化：从自然语言直接生成，实际可多轮澄清）
@@ -123,15 +127,22 @@ function App() {
       ch.onmessage = (event) => {
         if (event.kind === 'StateChanged') {
           setCurrentState(event.data.state);
-          addLog(`状态: ${event.data.state}`);
+          addLog(`▶ 状态: ${event.data.state}`);
+        } else if (event.kind === 'Progress') {
+          setProgress({ percent: event.data.percent, message: event.data.message });
+          addLog(`  ${event.data.message}`);
         } else if (event.kind === 'StageLog') {
           addLog(`[${event.data.stage}] ${event.data.message}`);
+        } else if (event.kind === 'CodeGenerated') {
+          setGeneratedCode({ main_ino: event.data.main_ino, explanation: event.data.explanation });
+          addLog(`✓ AI 生成代码完成: ${event.data.explanation}`);
         } else if (event.kind === 'ToolOutput') {
           setLogs((l) => [...l, `  ${event.data.line}`]);
         } else if (event.kind === 'Retry') {
-          addLog(`重试 ${event.data.stage} (${event.data.attempt}/${event.data.max}): ${event.data.reason}`);
+          addLog(`↻ 重试 ${event.data.stage} (${event.data.attempt}/${event.data.max}): ${event.data.reason}`);
         } else if (event.kind === 'Done') {
-          addLog(`完成: ${event.data.summary}`);
+          setProgress({ percent: event.data.success ? 100 : 0, message: event.data.summary });
+          addLog(`■ 完成: ${event.data.summary}`);
         }
       };
 
@@ -169,6 +180,7 @@ function App() {
           <DevelopView
             devices={devices} selectedPort={selectedPort} selectedChip={selectedChip}
             chips={chips} requirement={requirement} running={running} currentState={currentState}
+            progress={progress} generatedCode={generatedCode}
             chatHistory={chatHistory} logs={logs} outcome={outcome} logEndRef={logEndRef}
             onRefreshDevices={refreshDevices} onPort={setSelectedPort} onChip={setSelectedChip}
             onRequirement={setRequirement} onChat={chatWithAi} onRun={runAutoPipeline}
@@ -185,12 +197,12 @@ function App() {
 // ========== 开发视图 ==========
 function DevelopView(props: any) {
   const { devices, selectedPort, selectedChip, chips, requirement, running, currentState,
-    chatHistory, logs, outcome, logEndRef, onRefreshDevices, onPort, onChip,
-    onRequirement, onChat, onRun } = props;
+    progress, generatedCode, chatHistory, logs, outcome, logEndRef,
+    onRefreshDevices, onPort, onChip, onRequirement, onChat, onRun } = props;
 
   const stateLabel: Record<string, string> = {
-    coding: '生成代码', compiling: '编译中', flashing: '烧录中',
-    verifying: '验证中', archived: '✅ 完成', failed: '❌ 失败',
+    coding: '🧠 AI 生成代码', compiling: '⚙️ 编译中', flashing: '📡 烧录中',
+    verifying: '🔍 验证中', archived: '✅ 完成', failed: '❌ 失败',
   };
 
   return (
@@ -232,15 +244,30 @@ function DevelopView(props: any) {
           </div>
         </div>
 
-        {currentState && (
-          <div className="state-bar">
-            当前状态: <strong>{stateLabel[currentState] || currentState}</strong>
+        {(running || progress.percent > 0) && (
+          <div className="progress-section">
+            <div className="progress-header">
+              {running && <span className="thinking-dots">AI 思考中</span>}
+              {currentState && <strong>{stateLabel[currentState] || currentState}</strong>}
+              <span className="progress-percent">{progress.percent}%</span>
+            </div>
+            <div className="progress-bar">
+              <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
+            </div>
+            <div className="progress-message">{progress.message}</div>
+          </div>
+        )}
+
+        {generatedCode && (
+          <div className="code-section">
+            <h4>AI 生成的代码 {generatedCode.explanation && <span className="code-explain">— {generatedCode.explanation}</span>}</h4>
+            <pre className="code-block">{generatedCode.main_ino}</pre>
           </div>
         )}
       </div>
 
       <div className="chat-log">
-        <h3>对话与日志</h3>
+        <h3>过程日志</h3>
         <div className="messages">
           {chatHistory.map((m: ConversationMessage, i: number) => (
             <div key={i} className={`msg msg-${m.role}`}>
@@ -300,35 +327,83 @@ function DevicesView({ devices, onRefresh }: { devices: DeviceInfo[]; onRefresh:
 // ========== 项目视图 ==========
 function ProjectsView() {
   const [projects, setProjects] = useState<Project[]>([]);
-  useEffect(() => {
-    invoke<Project[]>('list_projects').then(setProjects).catch(() => {});
-  }, []);
+  const [selected, setSelected] = useState<Project | null>(null);
+  const [detail, setDetail] = useState<{ code: string; messages: ConversationMessage[] } | null>(null);
+
+  const refresh = () => invoke<Project[]>('list_projects').then(setProjects).catch(() => {});
+  useEffect(() => { refresh(); }, []);
+
+  const viewDetail = async (p: Project) => {
+    setSelected(p);
+    setDetail(null);
+    try {
+      const [code, messages] = await Promise.all([
+        invoke<string>('read_main_code', { projectId: p.id }).catch(() => '(无代码)'),
+        invoke<ConversationMessage[]>('load_messages', { projectId: p.id }).catch(() => []),
+      ]);
+      setDetail({ code, messages });
+    } catch (e) { setDetail({ code: `加载失败: ${e}`, messages: [] }); }
+  };
 
   const del = async (id: string) => {
     await invoke('delete_project', { projectId: id });
-    invoke<Project[]>('list_projects').then(setProjects);
+    if (selected?.id === id) { setSelected(null); setDetail(null); }
+    refresh();
   };
+
+  if (selected) {
+    return (
+      <div className="project-detail">
+        <button onClick={() => setSelected(null)}>← 返回列表</button>
+        <h3>{selected.name}</h3>
+        <div className="detail-meta">
+          <span>芯片: {selected.chip}</span>
+          <span>状态: <strong>{selected.state}</strong></span>
+          <span>端口: {selected.port ?? '-'}</span>
+          <span>创建: {selected.created_at}</span>
+          <span>重试: 编{selected.retry_counts.compile}/烧{selected.retry_counts.flash}/验{selected.retry_counts.verify}</span>
+        </div>
+
+        <h4>主程序代码</h4>
+        <pre className="code-block">{detail?.code ?? '加载中…'}</pre>
+
+        <h4>对话记录（{detail?.messages.length ?? 0}）</h4>
+        <div className="messages">
+          {detail?.messages.map((m, i) => (
+            <div key={i} className={`msg msg-${m.role}`}>
+              <span className="msg-role">{m.role === 'user' ? '我' : 'AI'}:</span>
+              <span className="msg-content">{m.content}</span>
+            </div>
+          ))}
+          {detail && detail.messages.length === 0 && <p className="empty">暂无对话记录</p>}
+        </div>
+
+        <button className="danger" onClick={() => del(selected.id)}>删除项目</button>
+      </div>
+    );
+  }
 
   return (
     <div className="projects-view">
-      <h3>项目列表（{projects.length}）</h3>
+      <h3>项目列表（{projects.length}）— 点击查看详情</h3>
       <table border={1} cellPadding={6} style={{ borderCollapse: 'collapse' }}>
         <thead>
-          <tr><th>名称</th><th>芯片</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
+          <tr><th>名称</th><th>芯片</th><th>状态</th><th>端口</th><th>创建时间</th><th>操作</th></tr>
         </thead>
         <tbody>
-          {projects.map((p: Project) => (
-            <tr key={p.id}>
+          {projects.map((p) => (
+            <tr key={p.id} className="clickable" onClick={() => viewDetail(p)}>
               <td>{p.name}</td>
               <td>{p.chip}</td>
               <td>{p.state}</td>
+              <td>{p.port ?? '-'}</td>
               <td>{p.created_at}</td>
-              <td><button onClick={() => del(p.id)}>删除</button></td>
+              <td><button onClick={(e) => { e.stopPropagation(); del(p.id); }}>删除</button></td>
             </tr>
           ))}
         </tbody>
       </table>
-      {projects.length === 0 && <p>暂无项目</p>}
+      {projects.length === 0 && <p className="empty">暂无项目，去「开发」视图创建一个吧</p>}
     </div>
   );
 }

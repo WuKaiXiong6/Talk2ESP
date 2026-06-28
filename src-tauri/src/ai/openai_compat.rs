@@ -64,6 +64,7 @@ struct ChatResponse {
 #[derive(Deserialize)]
 struct Choice {
     message: ResponseMessage,
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -91,7 +92,34 @@ impl OpenAiCompatProvider {
     }
 
     /// 底层 chat 调用，返回助手回复文本
+    /// 含重试机制（最多3次）：LLM 偶发返回空 content（推理模型服务端异常/限流）时自动重试
     async fn chat_raw(&self, messages: Vec<ChatMessage>) -> Result<String, String> {
+        const MAX_RETRY: u32 = 3;
+        let mut last_err = String::new();
+        for attempt in 1..=MAX_RETRY {
+            match self.chat_raw_once(&messages).await {
+                Ok(content) => return Ok(content),
+                Err(e) => {
+                    let is_retryable = e.contains("空 content")
+                        || e.contains("finish_reason=length")
+                        || e.contains("网络")
+                        || e.contains("timeout")
+                        || e.contains("请求失败");
+                    last_err = e.clone();
+                    if attempt < MAX_RETRY && is_retryable {
+                        eprintln!("[LLM] 第 {attempt} 次返回异常({e})，1秒后重试…");
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        Err(format!("LLM 调用 {MAX_RETRY} 次均失败，最后错误: {last_err}"))
+    }
+
+    /// 单次 chat 调用（不含重试）
+    async fn chat_raw_once(&self, messages: &[ChatMessage]) -> Result<String, String> {
         let url = format!("{}/chat/completions", self.config.base_url.trim_end_matches('/'));
         let ser_messages: Vec<ChatMessageSer> = messages
             .iter()
@@ -108,27 +136,43 @@ impl OpenAiCompatProvider {
             .post(&url)
             .bearer_auth(&self.config.api_key)
             .json(&req)
+            .timeout(std::time::Duration::from_secs(180))
             .send()
             .await
-            .map_err(|e| format!("LLM 请求失败: {e}"))?;
+            .map_err(|e| format!("LLM 请求失败(网络): {e}"))?;
 
         let status = resp.status();
         let text = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
         if !status.is_success() {
-            // 截断错误体避免泄露敏感信息
             let snippet = if text.len() > 500 { &text[..500] } else { &text };
             return Err(format!("LLM 返回 {status}: {snippet}"));
         }
 
-        let chat_resp: ChatResponse =
-            serde_json::from_str(&text).map_err(|e| format!("解析 LLM 响应失败: {e}; body={}", &text[..text.len().min(300)]))?;
+        let chat_resp: ChatResponse = serde_json::from_str(&text)
+            .map_err(|e| format!("解析 LLM 响应失败: {e}; body={}", &text[..text.len().min(300)]))?;
 
-        chat_resp
+        let choice = chat_resp
             .choices
             .into_iter()
             .next()
-            .and_then(|c| c.message.content)
-            .ok_or_else(|| "LLM 响应无 content".to_string())
+            .ok_or_else(|| "LLM 响应无 choices".to_string())?;
+
+        // 检测 finish_reason：length 表示 max_tokens 不足导致截断
+        match choice.finish_reason.as_deref() {
+            Some("length") => {
+                return Err("finish_reason=length: max_tokens 不足，输出被截断".to_string());
+            }
+            Some("content_filter") => {
+                return Err("finish_reason=content_filter: 内容被过滤".to_string());
+            }
+            _ => {}
+        }
+
+        let content = choice.message.content.unwrap_or_default();
+        if content.trim().is_empty() {
+            return Err("空 content: LLM 返回了空内容(可能是推理模型服务端异常或限流)".to_string());
+        }
+        Ok(content)
     }
 
     /// 从 LLM 文本响应中提取 JSON（容忍被 ```json 包裹的情况）

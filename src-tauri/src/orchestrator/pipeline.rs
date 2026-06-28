@@ -23,8 +23,12 @@ pub enum PipelineEvent {
     StateChanged { state: String },
     /// 阶段日志
     StageLog { stage: String, message: String },
+    /// 进度百分比（0-100）与描述
+    Progress { percent: u32, message: String },
     /// 编译/烧录流式输出
     ToolOutput { line: String },
+    /// 生成的代码（供前端展示）
+    CodeGenerated { main_ino: String, explanation: String },
     /// 重试
     Retry { stage: String, attempt: u32, max: u32, reason: String },
     /// 完成
@@ -83,14 +87,22 @@ where
 
     // ========== Coding：AI 生成代码 ==========
     emit(&mut on_event, PipelineEvent::StateChanged { state: "coding".into() });
+    emit(&mut on_event, PipelineEvent::Progress { percent: 10, message: "AI 正在理解需求并生成代码…".into() });
     emit(&mut on_event, PipelineEvent::StageLog {
         stage: "coding".into(),
-        message: "AI 生成代码中…".into(),
+        message: "AI 生成代码中（glm-5.2 是推理模型，可能需要 20-40 秒思考）…".into(),
     });
 
     let generated = provider.generate_code(&config.spec).await.map_err(|e| {
         format!("代码生成失败: {e}")
     })?;
+
+    // 推送生成的代码与说明，让用户看到 AI 产出
+    emit(&mut on_event, PipelineEvent::CodeGenerated {
+        main_ino: generated.main_ino.clone(),
+        explanation: generated.explanation.clone(),
+    });
+    emit(&mut on_event, PipelineEvent::Progress { percent: 30, message: "代码生成完成，进行安全校验…".into() });
 
     // 安全校验：引脚黑名单 + 危险扫描
     let pin_violations = check_code_pins(&generated.main_ino, &descriptor);
@@ -133,6 +145,7 @@ where
 
         // 编译
         emit(&mut on_event, PipelineEvent::StateChanged { state: "compiling".into() });
+        emit(&mut on_event, PipelineEvent::Progress { percent: 45, message: "调用 arduino-cli 编译代码…".into() });
         let compile_result = compile_sketch_for_project(&storage, &config.project_id, &project_name, &chip, &code.main_ino, &mut on_event).await?;
 
         if !compile_result.success {
@@ -173,6 +186,7 @@ where
 
         // 烧录
         emit(&mut on_event, PipelineEvent::StateChanged { state: "flashing".into() });
+        emit(&mut on_event, PipelineEvent::Progress { percent: 70, message: format!("通过 esptool 烧录到 {port}…", port = config.port) });
         let flash_result = flash_sketch_for_project(&storage, &config.project_id, &project_name, &chip, &config.port, &mut on_event).await?;
 
         if !flash_result.success {
@@ -191,6 +205,7 @@ where
 
         // 验证：读串口 + AI 判定
         emit(&mut on_event, PipelineEvent::StateChanged { state: "verifying".into() });
+        emit(&mut on_event, PipelineEvent::Progress { percent: 85, message: "读取设备串口输出，等待测试桩标记…".into() });
         let serial_output = read_serial_for_verify(&config.port, &mut on_event);
 
         let verdict = provider

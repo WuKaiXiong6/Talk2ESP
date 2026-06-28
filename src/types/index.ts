@@ -98,7 +98,9 @@ export interface ConversationMessage {
 export type PipelineEvent =
   | { kind: 'StateChanged'; data: { state: string } }
   | { kind: 'StageLog'; data: { stage: string; message: string } }
+  | { kind: 'Progress'; data: { percent: number; message: string } }
   | { kind: 'ToolOutput'; data: { line: string } }
+  | { kind: 'CodeGenerated'; data: { main_ino: string; explanation: string } }
   | { kind: 'Retry'; data: { stage: string; attempt: number; max: number; reason: string } }
   | { kind: 'Done'; data: { success: boolean; summary: string } };
 
