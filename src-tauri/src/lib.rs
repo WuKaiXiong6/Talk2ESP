@@ -3,13 +3,16 @@
 // 最后更新时间：2026-06-28-0339
 
 mod device;
+mod toolchain;
 
 use device::serial_monitor::{SerialLine, SerialMonitor};
 use device::DeviceInfo;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::ipc::Channel;
 use tauri::State;
+use toolchain::{compile_project, flash_project, ToolEvent};
 
 /// M0 遗留：简化串口信息（仅 VID/PID），保留兼容
 #[derive(Serialize, Clone)]
@@ -84,6 +87,33 @@ fn active_monitors(monitor: State<'_, Mutex<SerialMonitor>>) -> Vec<String> {
     monitor.lock().unwrap().active_ports()
 }
 
+/// M2：编译 Arduino 项目，流式日志经 Channel 推送
+#[tauri::command]
+fn compile_sketch(
+    sketch_path: String,
+    fqbn: String,
+    on_event: Channel<ToolEvent>,
+) -> Result<toolchain::ToolResult, String> {
+    let path = PathBuf::from(&sketch_path);
+    compile_project(&path, &fqbn, move |ev| {
+        let _ = on_event.send(ev);
+    })
+}
+
+/// M2：烧录 Arduino 项目，流式日志经 Channel 推送
+#[tauri::command]
+fn flash_sketch(
+    sketch_path: String,
+    fqbn: String,
+    port: String,
+    on_event: Channel<ToolEvent>,
+) -> Result<toolchain::ToolResult, String> {
+    let path = PathBuf::from(&sketch_path);
+    flash_project(&path, &fqbn, &port, move |ev| {
+        let _ = on_event.send(ev);
+    })
+}
+
 /// Channel 流式通信验证（M0 遗留）
 #[derive(Serialize, Clone)]
 #[serde(tag = "event", content = "data")]
@@ -116,6 +146,8 @@ pub fn run() {
             send_serial,
             stop_monitor,
             active_monitors,
+            compile_sketch,
+            flash_sketch,
             start_tick
         ])
         .run(tauri::generate_context!())

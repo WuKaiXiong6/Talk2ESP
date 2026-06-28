@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-0345
+最后更新时间：2026-06-28-0955
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -27,7 +27,7 @@
 |---|---|---|---|
 | M0 | Tauri 骨架 + 前后端通信打通 | ✅ 完成 | scan_ports单测通过+GUI启动验证 |
 | M1 | 设备/串口层（型号识别+监控读写） | ✅ 完成 | scan_devices+串口回显端到端测试通过 |
-| M2 | 工具链层（arduino-cli编译+esptool烧录） | ⏳ 未开始 | |
+| M2 | 工具链层（arduino-cli编译+esptool烧录） | ✅ 完成 | 编译+烧录COM8流式推送测试通过 |
 | M3 | AI 适配层（OpenAI兼容+Claude） | ⏳ 未开始 | |
 | M4 | 安全层 + 型号描述表 | ⏳ 未开始 | |
 | M5 | 项目/存储层 | ⏳ 未开始 | |
@@ -132,6 +132,23 @@
   - 全量 5 个测试通过，无回归无警告。
 - **结论**：通过
 - **遗留问题**：无。设备/串口层核心能力（型号识别、多设备串口监控读写）已实证可用。
+
+### 验证 2026-06-28-0955：M2 工具链层（编译 + 烧录流式推送）
+- **验证时间**：2026-06-28-0955
+- **验证对象**：M2 里程碑——arduino-cli 编译 + upload 烧录，stdout/stderr 流式经回调推送
+- **验证环境**：Windows 10，Tauri 2.11.3 + arduino-cli 1.1.1 + arduino-esp32 3.3.10，COM8(ESP32-S3)
+- **操作步骤**：
+  1. 实现 `toolchain/arduino_cli.rs`：`run_streaming` 用 std::process::Command + 管道读取线程，stdout 主线程逐行推送回调，stderr 子线程收集后合并；隐藏 Windows 控制台窗口；
+  2. `compile_project(sketch, fqbn, on_event)`、`flash_project(sketch, fqbn, port, on_event)`；
+  3. `resolve_arduino_cli` 三级解析（环境变量 > 项目内 tools/ > 系统 PATH）；
+  4. `cargo test compile_blink_s3_success`：编译 Blink 到 S3 验证流式事件+Finished；
+  5. `cargo test flash_blink_to_com8_success`：先编译再 upload 到 COM8 验证烧录链路。
+- **观察现象**：
+  - 编译测试通过：success=true，exit_code=Some(0)，收到 Stdout 流式事件 + Finished(0)；
+  - 烧录测试通过：先 compile 成功，再 upload 到 COM8 成功，success=true，含 Finished 事件；
+  - 全量 7 个测试通过，无回归无警告。
+- **结论**：通过
+- **遗留问题**：烧录前需先编译（arduino-cli upload 不自动重编译），编排器(M6)需保证 compile→flash 顺序。
 
 ---
 
