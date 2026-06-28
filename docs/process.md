@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-0955
+最后更新时间：2026-06-28-1007
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -28,7 +28,7 @@
 | M0 | Tauri 骨架 + 前后端通信打通 | ✅ 完成 | scan_ports单测通过+GUI启动验证 |
 | M1 | 设备/串口层（型号识别+监控读写） | ✅ 完成 | scan_devices+串口回显端到端测试通过 |
 | M2 | 工具链层（arduino-cli编译+esptool烧录） | ✅ 完成 | 编译+烧录COM8流式推送测试通过 |
-| M3 | AI 适配层（OpenAI兼容+Claude） | ⏳ 未开始 | |
+| M3 | AI 适配层（OpenAI兼容+Claude） | ✅ 完成 | 真实LLM对话+代码生成+生成代码可编译通过 |
 | M4 | 安全层 + 型号描述表 | ⏳ 未开始 | |
 | M5 | 项目/存储层 | ⏳ 未开始 | |
 | M6 | 编排器（流水线状态机） | ⏳ 未开始 | |
@@ -150,6 +150,23 @@
 - **结论**：通过
 - **遗留问题**：烧录前需先编译（arduino-cli upload 不自动重编译），编排器(M6)需保证 compile→flash 顺序。
 
+### 验证 2026-06-28-1007：M3 AI适配层（真实LLM对话+代码生成+生成代码可编译）
+- **验证时间**：2026-06-28-1007
+- **验证对象**：M3 里程碑——LlmProvider trait + OpenAI兼容适配器 + 真实 LLM 对话/代码生成/生成代码可编译
+- **验证环境**：Windows 10，火山方舟 glm-5.2（OpenAI兼容协议），reqwest 0.12 + async-trait
+- **操作步骤**：
+  1. 实现 `ai/mod.rs`：LlmProvider trait（chat/generate_code/diagnose/judge）+ 数据结构（RequirementSpec/GeneratedCode/Verdict/FixSuggestion）；
+  2. 实现 `ai/openai_compat.rs`：OpenAiCompatProvider 调 OpenAI 兼容 chat/completions，从 .env.local 读配置，JSON 解析容忍 markdown 包裹；
+  3. 实现 `ai/prompts.rs`：四类调用 prompt 模板，注入系统人设+引脚黑名单+测试桩协议；
+  4. `cargo test --test m3_llm_real`：chat_basic + generate_code_blink 真实调 LLM；
+  5. `cargo test --test m3_generate_compile`：生成代码写入临时目录用 arduino-cli 编译验证 M3↔M2 衔接。
+- **观察现象**：
+  - chat_basic 通过：glm-5.2 回复 "OK"；
+  - generate_code_blink 通过：生成含 setup 的主程序+测试桩，代码注释正确说明 GPIO2 不在黑名单；
+  - generate_then_compile 通过：AI 生成代码经 arduino-cli 编译 success=true exit=0。
+- **结论**：通过
+- **遗留问题**：judge/diagnose 的 prompt 已就绪，逻辑与 generate_code 同构（chat+JSON解析），将在 M6 编排器端到端验证时覆盖。
+
 ---
 
 ## 4. 重大决策记录
@@ -196,3 +213,14 @@
 - **备选方案**：Strapping 引脚一刀切 Error——但大量合法 Arduino 例程（BOOT 键/板载 LED）使用 GPIO0/GPIO9，过严会误伤，故用 Warn。
 - **影响**：`chips/*.toml` 字段定义、safety 层校验逻辑、AI prompt 注入内容定型。
 - **回滚条件或后续观察点**：S3 Octal PSRAM 变体（S3R8/R8V）的 GPIO33–37 在无法识别型号时暂入 Warn，后续若可准确识别则升级为 Error。
+
+### 决策 2026-06-28-1007：LLM 供应商定为火山方舟 glm-5.2（OpenAI 兼容协议）
+- **时间**：2026-06-28-1007
+- **背景**：M3 需真实 LLM 验证对话与代码生成。用户提供火山方舟接入。
+- **决策**：采用火山方舟 glm-5.2（OpenAI 兼容协议，base_url=https://ark.cn-beijing.volces.com/api/coding/v3），通过 OpenAiCompatProvider 适配。API Key 存于 .env.local（已 gitignore，不入仓库）。
+- **备选方案**：智谱 GLM-4-Flash（免费）、DeepSeek（低价）、Claude/OpenAI 原生。火山方舟 glm-5.2 为用户提供，国内访问稳定。
+- **影响**：
+  - glm-5.2 为推理模型，max_tokens 需≥4096（含 reasoning tokens）；
+  - 验证 AI 生成 ESP32-S3 代码可真实编译通过，M3↔M2 衔接已实证；
+  - 架构预留多供应商（LlmProvider trait），后续可加 Claude/其他。
+- **回滚条件或后续观察点**：若 glm-5.2 生成代码质量不稳定或响应过慢，可切换其他供应商；trait 抽象保证切换成本低。

@@ -2,9 +2,12 @@
 // 文件作用：Talk2ESP 应用入口，注册 Tauri 命令与插件、管理全局状态
 // 最后更新时间：2026-06-28-0339
 
-mod device;
-mod toolchain;
+pub mod device;
+pub mod toolchain;
+pub mod ai;
 
+use ai::openai_compat::OpenAiCompatProvider;
+use ai::{ChatMessage, FixSuggestion, GeneratedCode, LlmProvider, RequirementSpec, Verdict};
 use device::serial_monitor::{SerialLine, SerialMonitor};
 use device::DeviceInfo;
 use serde::Serialize;
@@ -114,6 +117,39 @@ fn flash_sketch(
     })
 }
 
+/// M3：创建 LLM 适配器（从 .env.local/环境变量读配置）
+fn make_provider() -> Result<OpenAiCompatProvider, String> {
+    OpenAiCompatProvider::from_env()
+}
+
+/// M3：通用对话
+#[tauri::command]
+async fn llm_chat(messages: Vec<ChatMessage>) -> Result<String, String> {
+    let provider = make_provider()?;
+    provider.chat(messages).await
+}
+
+/// M3：根据需求确认书生成代码
+#[tauri::command]
+async fn llm_generate_code(spec: RequirementSpec) -> Result<GeneratedCode, String> {
+    let provider = make_provider()?;
+    provider.generate_code(&spec).await
+}
+
+/// M3：诊断错误
+#[tauri::command]
+async fn llm_diagnose(error: String, context_code: String) -> Result<FixSuggestion, String> {
+    let provider = make_provider()?;
+    provider.diagnose(&error, &context_code).await
+}
+
+/// M3：验证判定
+#[tauri::command]
+async fn llm_judge(serial_output: String, expectation: String) -> Result<Verdict, String> {
+    let provider = make_provider()?;
+    provider.judge(&serial_output, &expectation).await
+}
+
 /// Channel 流式通信验证（M0 遗留）
 #[derive(Serialize, Clone)]
 #[serde(tag = "event", content = "data")]
@@ -148,6 +184,10 @@ pub fn run() {
             active_monitors,
             compile_sketch,
             flash_sketch,
+            llm_chat,
+            llm_generate_code,
+            llm_diagnose,
+            llm_judge,
             start_tick
         ])
         .run(tauri::generate_context!())
