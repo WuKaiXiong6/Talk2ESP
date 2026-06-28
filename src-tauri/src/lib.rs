@@ -130,12 +130,13 @@ fn flash_sketch(
 fn make_provider() -> Result<OpenAiCompatProvider, String> {
     let settings = settings::load_settings();
     if settings::is_llm_configured(&settings) {
-        // 从用户设置构造
+        // 从用户设置构造（max_tokens 钳制到合理范围，避免超大值触发 API 400）
+        let max_tokens = settings.llm.clamped_max_tokens();
         Ok(OpenAiCompatProvider::new(ai::openai_compat::OpenAiCompatConfig {
             base_url: settings.llm.base_url,
             api_key: settings.llm.api_key,
             model: settings.llm.model,
-            max_tokens: settings.llm.max_tokens,
+            max_tokens,
         }))
     } else {
         // 回退到环境变量/.env.local（开发期）

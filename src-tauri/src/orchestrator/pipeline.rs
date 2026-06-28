@@ -84,8 +84,10 @@ where
     let mut outcome = PipelineOutcome::default();
     let mut current_code: Option<GeneratedCode> = None;
     let mut retry = RetryCounts::default();
+    let pipeline_start = std::time::Instant::now();
 
     // ========== Coding：AI 生成代码 ==========
+    let stage_start = std::time::Instant::now();
     emit(&mut on_event, PipelineEvent::StateChanged { state: "coding".into() });
     emit(&mut on_event, PipelineEvent::Progress { percent: 10, message: "AI 正在理解需求并生成代码…".into() });
     emit(&mut on_event, PipelineEvent::StageLog {
@@ -96,6 +98,10 @@ where
     let generated = provider.generate_code(&config.spec).await.map_err(|e| {
         format!("代码生成失败: {e}")
     })?;
+    emit(&mut on_event, PipelineEvent::StageLog {
+        stage: "coding".into(),
+        message: format!("代码生成完成，耗时 {:.1}s", stage_start.elapsed().as_secs_f64()),
+    });
 
     // 推送生成的代码与说明，让用户看到 AI 产出
     emit(&mut on_event, PipelineEvent::CodeGenerated {
@@ -144,9 +150,14 @@ where
         let code = current_code.as_ref().ok_or("无代码可编译")?;
 
         // 编译
+        let stage_start = std::time::Instant::now();
         emit(&mut on_event, PipelineEvent::StateChanged { state: "compiling".into() });
         emit(&mut on_event, PipelineEvent::Progress { percent: 45, message: "调用 arduino-cli 编译代码…".into() });
         let compile_result = compile_sketch_for_project(&storage, &config.project_id, &project_name, &chip, &code.main_ino, &mut on_event).await?;
+        emit(&mut on_event, PipelineEvent::StageLog {
+            stage: "compiling".into(),
+            message: format!("编译{}，耗时 {:.1}s", if compile_result.success { "完成" } else { "失败" }, stage_start.elapsed().as_secs_f64()),
+        });
 
         if !compile_result.success {
             let attempt = retry.inc_compile();
@@ -185,9 +196,14 @@ where
         }
 
         // 烧录
+        let stage_start = std::time::Instant::now();
         emit(&mut on_event, PipelineEvent::StateChanged { state: "flashing".into() });
         emit(&mut on_event, PipelineEvent::Progress { percent: 70, message: format!("通过 esptool 烧录到 {port}…", port = config.port) });
         let flash_result = flash_sketch_for_project(&storage, &config.project_id, &project_name, &chip, &config.port, &mut on_event).await?;
+        emit(&mut on_event, PipelineEvent::StageLog {
+            stage: "flashing".into(),
+            message: format!("烧录{}，耗时 {:.1}s", if flash_result.success { "完成" } else { "失败" }, stage_start.elapsed().as_secs_f64()),
+        });
 
         if !flash_result.success {
             let attempt = retry.inc_flash();
@@ -203,27 +219,26 @@ where
             continue;
         }
 
-        // 验证：读串口 + AI 判定
+        // 验证：读串口 + 本地正则判定测试桩（不调 LLM，省 15-30s）
+        let stage_start = std::time::Instant::now();
         emit(&mut on_event, PipelineEvent::StateChanged { state: "verifying".into() });
-        emit(&mut on_event, PipelineEvent::Progress { percent: 85, message: "读取设备串口输出，等待测试桩标记…".into() });
+        emit(&mut on_event, PipelineEvent::Progress { percent: 85, message: "读取设备串口输出，匹配测试桩标记…".into() });
         let serial_output = read_serial_for_verify(&config.port, &mut on_event);
 
-        let verdict = provider
-            .judge(&serial_output, &config.spec.expected_behavior)
-            .await
-            .map_err(|e| format!("AI 判定失败: {e}"))?;
+        let verdict = judge_locally(&serial_output, &config.spec);
 
         emit(&mut on_event, PipelineEvent::StageLog {
             stage: "verifying".into(),
-            message: format!("AI 判定: {} (匹配: {:?}, 失败: {:?})", verdict.verdict, verdict.matched_cases, verdict.failed_cases),
+            message: format!("判定: {} (匹配: {:?}, 失败: {:?})，耗时 {:.1}s", verdict.verdict, verdict.matched_cases, verdict.failed_cases, stage_start.elapsed().as_secs_f64()),
         });
 
         if verdict.verdict == "pass" {
             outcome.verdict = Some(verdict.clone());
             outcome.success = true;
             outcome.final_state = "archived".into();
-            outcome.summary = "全自动流水线验证通过".into();
+            outcome.summary = format!("全自动流水线验证通过，总耗时 {:.1}s", pipeline_start.elapsed().as_secs_f64());
             update_project_state(&storage, &config.project_id, ProjectState::Archived).await;
+            emit(&mut on_event, PipelineEvent::Progress { percent: 100, message: "完成".into() });
             emit(&mut on_event, PipelineEvent::Done { success: true, summary: outcome.summary.clone() });
             return Ok(outcome);
         }
@@ -346,6 +361,64 @@ async fn prepare_sketch_dir(
     )
     .map_err(|e| e.to_string())?;
     Ok(sketch_dir)
+}
+
+/// 本地正则判定测试桩：匹配串口输出中的 TEST:PASS/FAIL 标记
+/// 不调 LLM，省 15-30s。只有验证失败需诊断时才调 LLM
+fn judge_locally(serial_output: &str, spec: &RequirementSpec) -> Verdict {
+    use regex::Regex;
+    let pass_re = Regex::new(r"TEST:PASS\s+(\S+)").unwrap();
+    let fail_re = Regex::new(r"TEST:FAIL\s+(\S+)").unwrap();
+
+    let mut matched: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+
+    for cap in pass_re.captures_iter(serial_output) {
+        if let Some(name) = cap.get(1) {
+            let n = name.as_str().to_string();
+            if !matched.contains(&n) {
+                matched.push(n);
+            }
+        }
+    }
+    for cap in fail_re.captures_iter(serial_output) {
+        if let Some(name) = cap.get(1) {
+            let n = name.as_str().to_string();
+            if !failed.contains(&n) {
+                failed.push(n);
+            }
+        }
+    }
+
+    // 期望的用例名
+    let expected: Vec<String> = spec
+        .test_harness_expectation
+        .cases
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+
+    let all_expected_passed = expected.iter().all(|e| matched.contains(e));
+    let no_failures = failed.is_empty();
+    let has_any_pass = !matched.is_empty();
+
+    let (verdict, reason) = if all_expected_passed && no_failures {
+        ("pass".to_string(), format!("所有期望用例通过: {:?}", expected))
+    } else if !has_any_pass {
+        ("fail".to_string(), "未收到任何 TEST:PASS 标记，设备可能未正常运行或串口时序问题".to_string())
+    } else if !no_failures {
+        ("fail".to_string(), format!("存在失败的用例: {:?}", failed))
+    } else {
+        ("fail".to_string(), format!("部分期望用例未通过，已匹配: {:?}, 期望: {:?}", matched, expected))
+    };
+
+    Verdict {
+        verdict,
+        matched_cases: matched,
+        failed_cases: failed,
+        reason,
+        ai_analysis: "本地正则匹配判定（未调用 LLM）".to_string(),
+    }
 }
 
 /// 验证阶段读串口（烧录后设备复位输出测试桩标记）

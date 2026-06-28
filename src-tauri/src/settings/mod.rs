@@ -30,6 +30,13 @@ pub struct LlmSettings {
     pub max_tokens: u32,
 }
 
+impl LlmSettings {
+    /// 钳制 max_tokens 到合理范围 [256, 128000]，避免用户填超大值触发 API 400
+    pub fn clamped_max_tokens(&self) -> u32 {
+        self.max_tokens.clamp(256, 128000)
+    }
+}
+
 /// 自动化模式
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AutomationSettings {
