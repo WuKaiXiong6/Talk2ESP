@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1007
+最后更新时间：2026-06-28-1014
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -29,7 +29,7 @@
 | M1 | 设备/串口层（型号识别+监控读写） | ✅ 完成 | scan_devices+串口回显端到端测试通过 |
 | M2 | 工具链层（arduino-cli编译+esptool烧录） | ✅ 完成 | 编译+烧录COM8流式推送测试通过 |
 | M3 | AI 适配层（OpenAI兼容+Claude） | ✅ 完成 | 真实LLM对话+代码生成+生成代码可编译通过 |
-| M4 | 安全层 + 型号描述表 | ⏳ 未开始 | |
+| M4 | 安全层 + 型号描述表 | ✅ 完成 | 引脚黑名单Error/Warn+危险扫描18测试全过 |
 | M5 | 项目/存储层 | ⏳ 未开始 | |
 | M6 | 编排器（流水线状态机） | ⏳ 未开始 | |
 | M7 | 前端完整界面 | ⏳ 未开始 | |
@@ -166,6 +166,24 @@
   - generate_then_compile 通过：AI 生成代码经 arduino-cli 编译 success=true exit=0。
 - **结论**：通过
 - **遗留问题**：judge/diagnose 的 prompt 已就绪，逻辑与 generate_code 同构（chat+JSON解析），将在 M6 编排器端到端验证时覆盖。
+
+### 验证 2026-06-28-1014：M4 安全层+型号描述表（引脚黑名单+危险扫描）
+- **验证时间**：2026-06-28-1014
+- **验证对象**：M4 里程碑——chips 型号描述表(TOML) + safety 引脚黑名单校验 + 危险操作扫描
+- **验证环境**：Windows 10，toml 0.8 + regex 1
+- **操作步骤**：
+  1. 创建 `chips/esp32s3.toml`、`chips/esp32c3.toml`：含 FQBN/Flash偏移/引脚黑名单(Error/Warn)/安全默认/引脚说明；
+  2. 实现 `chips/mod.rs`：ChipDescriptor 加载 TOML + pin_level() 判定 + list_supported_chips()；
+  3. 实现 `safety/pin_blacklist.rs`：正则提取 pinMode/digitalWrite 等函数引脚字面量，比对黑名单分级（Error阻断/Warn提示），跳过注释行；
+  4. 实现 `safety/danger_check.rs`：regex 扫描关闭看门狗/改启动配置/引脚过载/直接操作Flash四类危险操作；
+  5. lib.rs 注册 check_pins/scan_dangers/list_chips 命令；`cargo test --lib` 全量验证。
+- **观察现象**：
+  - chips 测试：S3/C3 描述表加载正确，pin_level 判定准确（GPIO45=Error, GPIO0=Warn, GPIO4=None）；
+  - pin_blacklist 测试：S3 GPIO45 阻断、GPIO0 提示不阻断、C3 GPIO12 阻断、安全引脚无误报、注释行不触发；
+  - danger_check 测试：disableCore0WDT/spi_flash_erase_sector 正确检出，安全代码无报告；
+  - 全量 18 个测试通过，无回归无警告。
+- **结论**：通过
+- **遗留问题**：Octal PSRAM 变体(S3R8)的 GPIO33-37 默认按 Warn 处理（无法识别型号时），后续可按芯片 ID 精确识别后升级为 Error。
 
 ---
 

@@ -1,0 +1,25 @@
+# 文件路径：src-tauri/chips/esp32s3.toml
+# 文件作用：ESP32-S3 型号描述表（引脚黑名单/Flash偏移/FQBN）
+# 最后更新时间：2026-06-28-1011
+
+chip = "esp32s3"
+fqbn = "esp32:esp32:esp32s3"
+flash_offset_app = "0x10000"
+pin_count = 49
+# Error 级（阻断）：Flash/PSRAM 物理引脚(26-32) + VDD_SPI 电压选择(45)
+pin_blacklist_error = [26, 27, 28, 29, 30, 31, 32, 45]
+# Octal PSRAM 变体（S3R8/R8V）额外阻断
+pin_blacklist_error_octal = [33, 34, 35, 36, 37]
+# Warn 级（提示）：Strapping(0,3,46) + USB D-/D+(19,20) + JTAG(39-42) + UART0(43,44)
+pin_blacklist_warn = [0, 3, 46, 19, 20, 39, 40, 41, 42, 43, 44]
+# 安全默认引脚
+pin_safe_default = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 47, 48]
+
+[pin_notes]
+0 = "Strapping：复位瞬间电平决定启动模式"
+3 = "Strapping：JTAG 信号源选择"
+19 = "原生 USB D-，复用关闭 USB-JTAG 烧录"
+20 = "原生 USB D+，复用关闭 USB-JTAG 烧录"
+26 = "SPI0/1 Flash/PSRAM 物理引脚，禁止复用"
+45 = "VDD_SPI 电压选择，误用可锁死/损坏 Flash"
+46 = "Strapping：与 GPIO0 组合判定启动模式"
