@@ -7,11 +7,13 @@ pub mod toolchain;
 pub mod ai;
 pub mod chips;
 pub mod safety;
+pub mod project;
 
 use ai::openai_compat::OpenAiCompatProvider;
 use ai::{ChatMessage, FixSuggestion, GeneratedCode, LlmProvider, RequirementSpec, Verdict};
 use device::serial_monitor::{SerialLine, SerialMonitor};
 use device::DeviceInfo;
+use project::{ConversationMessage, Project, ProjectStorage, StageLog};
 use safety::{check_code_pins, scan_dangerous_ops, DangerReport, PinViolations};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -172,6 +174,106 @@ fn list_chips() -> Vec<String> {
     chips::list_supported_chips()
 }
 
+/// M5：创建项目
+#[tauri::command]
+fn create_project(
+    name: String,
+    chip: String,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<Project, String> {
+    let descriptor = chips::load_descriptor(&chip)?;
+    let snapshot = project::model::PinBlacklistSnapshot {
+        error: descriptor.pin_blacklist_error.clone(),
+        warn: descriptor
+            .pin_blacklist_warn
+            .iter()
+            .chain(descriptor.pin_blacklist_error_octal.iter().flatten())
+            .copied()
+            .collect(),
+    };
+    let storage = storage.lock().unwrap();
+    storage.create_project(&name, &chip, snapshot, Some("openai_compat".into()))
+}
+
+/// M5：列出所有项目
+#[tauri::command]
+fn list_projects(storage: State<'_, Mutex<ProjectStorage>>) -> Result<Vec<Project>, String> {
+    let storage = storage.lock().unwrap();
+    storage.list_projects()
+}
+
+/// M5：加载单个项目
+#[tauri::command]
+fn load_project(project_id: String, storage: State<'_, Mutex<ProjectStorage>>) -> Result<Project, String> {
+    let storage = storage.lock().unwrap();
+    storage.load_project(&project_id)
+}
+
+/// M5：保存项目（更新元数据）
+#[tauri::command]
+fn save_project(project: Project, storage: State<'_, Mutex<ProjectStorage>>) -> Result<(), String> {
+    let storage = storage.lock().unwrap();
+    storage.save_project(&project)
+}
+
+/// M5：删除项目
+#[tauri::command]
+fn delete_project(project_id: String, storage: State<'_, Mutex<ProjectStorage>>) -> Result<(), String> {
+    let storage = storage.lock().unwrap();
+    storage.delete_project(&project_id)
+}
+
+/// M5：追加对话消息
+#[tauri::command]
+fn append_message(
+    project_id: String,
+    message: ConversationMessage,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<(), String> {
+    let storage = storage.lock().unwrap();
+    storage.append_message(&project_id, &message)
+}
+
+/// M5：加载对话记录
+#[tauri::command]
+fn load_messages(
+    project_id: String,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<Vec<ConversationMessage>, String> {
+    let storage = storage.lock().unwrap();
+    storage.load_messages(&project_id)
+}
+
+/// M5：写入主程序代码
+#[tauri::command]
+fn write_main_code(
+    project_id: String,
+    code: String,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<(), String> {
+    let storage = storage.lock().unwrap();
+    storage.write_main_code(&project_id, &code)
+}
+
+/// M5：读取主程序代码
+#[tauri::command]
+fn read_main_code(project_id: String, storage: State<'_, Mutex<ProjectStorage>>) -> Result<String, String> {
+    let storage = storage.lock().unwrap();
+    storage.read_main_code(&project_id)
+}
+
+/// M5：写入阶段日志
+#[tauri::command]
+fn write_stage_log(
+    project_id: String,
+    log: StageLog,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<String, String> {
+    let storage = storage.lock().unwrap();
+    let path = storage.write_stage_log(&project_id, &log)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 /// Channel 流式通信验证（M0 遗留）
 #[derive(Serialize, Clone)]
 #[serde(tag = "event", content = "data")]
@@ -197,6 +299,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(Mutex::new(SerialMonitor::new()))
+        .manage(Mutex::new(ProjectStorage::from_default()))
         .invoke_handler(tauri::generate_handler![
             scan_ports,
             scan_devices,
@@ -213,6 +316,16 @@ pub fn run() {
             check_pins,
             scan_dangers,
             list_chips,
+            create_project,
+            list_projects,
+            load_project,
+            save_project,
+            delete_project,
+            append_message,
+            load_messages,
+            write_main_code,
+            read_main_code,
+            write_stage_log,
             start_tick
         ])
         .run(tauri::generate_context!())
