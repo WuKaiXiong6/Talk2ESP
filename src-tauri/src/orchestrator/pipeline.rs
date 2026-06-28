@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/orchestrator/pipeline.rs
 // 文件作用：流水线编排核心，状态机推进需求→代码→编译→烧录→验证，含失败重试
-// 最后更新时间：2026-06-28-1310
+// 最后更新时间：2026-06-29-0130
 
 use crate::ai::openai_compat::OpenAiCompatProvider;
 use crate::ai::{GeneratedCode, LlmProvider, RequirementSpec, Verdict};
@@ -54,6 +54,26 @@ pub struct PipelineConfig {
     pub flash_confirmed: Arc<std::sync::atomic::AtomicBool>,
     /// #24 是否启用烧录前确认（来自 settings.automation.confirm_before_flash）
     pub confirm_before_flash: bool,
+    /// #69 各阶段重试上限（来自 settings.retry，默认 3 保持既有行为）
+    pub max_retry: MaxRetry,
+}
+
+/// #69 各阶段重试上限（运行期使用，已钳制到 [0,5]）
+#[derive(Clone, Debug, Copy)]
+pub struct MaxRetry {
+    pub compile: u32,
+    pub flash: u32,
+    pub verify: u32,
+}
+
+impl Default for MaxRetry {
+    fn default() -> Self {
+        Self {
+            compile: 3,
+            flash: 3,
+            verify: 3,
+        }
+    }
 }
 
 impl Default for PipelineConfig {
@@ -74,6 +94,7 @@ impl Default for PipelineConfig {
             cancel_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             flash_confirmed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             confirm_before_flash: false,
+            max_retry: MaxRetry::default(),
         }
     }
 }
@@ -221,14 +242,21 @@ where
 
         if !compile_result.success {
             let attempt = retry.inc_compile();
-            if attempt > RetryCounts::MAX_RETRY {
+            // #69 编译重试上限可配置；0 表示失败即转人工
+            let max = config.max_retry.compile;
+            if attempt > max {
                 let summary = format!("编译失败，重试 {} 次后转人工。最后错误: {}", attempt, compile_result.error);
                 return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
             }
             emit(&mut on_event, PipelineEvent::Retry {
-                stage: "compile".into(), attempt, max: RetryCounts::MAX_RETRY,
+                stage: "compile".into(), attempt, max,
                 reason: compile_result.error.clone(),
             });
+            // max=0 时不进行 AI 诊断修复，直接转人工
+            if max == 0 {
+                let summary = format!("编译失败（已配置不重试），错误: {}", compile_result.error);
+                return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
+            }
             // AI 诊断修复
             match provider.diagnose(&compile_result.error, &code.main_ino).await {
                 Ok(fix) => {
@@ -291,14 +319,21 @@ where
 
         if !flash_result.success {
             let attempt = retry.inc_flash();
-            if attempt > RetryCounts::MAX_RETRY {
+            // #69 烧录重试上限可配置；0 表示失败即转人工
+            let max = config.max_retry.flash;
+            if attempt > max {
                 let summary = format!("烧录失败，重试 {} 次后转人工: {}", attempt, flash_result.error);
                 return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
             }
             emit(&mut on_event, PipelineEvent::Retry {
-                stage: "flash".into(), attempt, max: RetryCounts::MAX_RETRY,
+                stage: "flash".into(), attempt, max,
                 reason: flash_result.error.clone(),
             });
+            // max=0 时不重试，直接转人工
+            if max == 0 {
+                let summary = format!("烧录失败（已配置不重试）: {}", flash_result.error);
+                return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
+            }
             // 烧录失败通常降波特率或检查连接，这里直接重试（arduino-cli upload 会重编译）
             continue;
         }
@@ -329,15 +364,23 @@ where
 
         // 验证失败：AI 诊断修复重试
         let attempt = retry.inc_verify();
-        if attempt > RetryCounts::MAX_RETRY {
+        // #69 验证重试上限可配置；0 表示失败即转人工
+        let max = config.max_retry.verify;
+        if attempt > max {
             let summary = format!("验证失败，重试 {} 次后转人工: {}", attempt, verdict.reason);
             outcome.verdict = Some(verdict);
             return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
         }
         emit(&mut on_event, PipelineEvent::Retry {
-            stage: "verify".into(), attempt, max: RetryCounts::MAX_RETRY,
+            stage: "verify".into(), attempt, max,
             reason: verdict.reason.clone(),
         });
+        // max=0 时不进行 AI 诊断修复，直接转人工
+        if max == 0 {
+            let summary = format!("验证失败（已配置不重试）: {}", verdict.reason);
+            outcome.verdict = Some(verdict);
+            return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
+        }
         // AI 诊断修复代码，回到编译
         let error_msg = format!("验证失败: {} 串口输出: {}", verdict.reason, serial_output);
         match provider.diagnose(&error_msg, &code.main_ino).await {

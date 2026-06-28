@@ -1,6 +1,6 @@
 // 文件路径：src/views/MonitorView.tsx
-// 文件作用：串口监控视图——输出时间戳/着色/搜索/暂停/清空/导出 + 波特率预设 + 发送区历史 + 状态实时 + 完整串口参数
-// 最后更新时间：2026-06-28-1245
+// 文件作用：串口监控视图——输出时间戳/着色/搜索/暂停/清空/导出 + 波特率预设+探测 + 发送区历史 + 状态实时 + 完整串口参数
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
@@ -57,6 +57,8 @@ export function MonitorView() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [active, setActive] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // #35 波特率探测中
+  const [detecting, setDetecting] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   // 暂停期间缓冲的行
   const pausedBufferRef = useRef<SerialLineItem[]>([]);
@@ -113,6 +115,27 @@ export function MonitorView() {
     }
     setActive(false);
     notify.info('串口已关闭', port);
+  };
+
+  // #35 自动探测波特率：调后端 detect_baud，命中则填入下拉；探测不到提示手动选择
+  const detectBaud = async () => {
+    if (!port.trim()) {
+      notify.warning('请先输入端口', '需要端口才能探测波特率');
+      return;
+    }
+    setDetecting(true);
+    try {
+      const detected = await invoke<number | null>('detect_baud', { port });
+      if (detected) {
+        setBaud(detected);
+        notify.success('探测成功', `检测到波特率 ${detected}，已自动填入`);
+      } else {
+        notify.warning('未能探测波特率', '设备可能未主动输出数据（静默固件），请手动选择常用波特率');
+      }
+    } catch (e) {
+      notify.error('探测失败', String(e));
+    }
+    setDetecting(false);
   };
 
   const send = async () => {
@@ -188,6 +211,10 @@ export function MonitorView() {
           <select value={baud} onChange={(e) => setBaud(+e.target.value)} disabled={active}>
             {BAUD_PRESETS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
+          {/* #35 自动探测波特率 */}
+          <Button variant="ghost" size="sm" onClick={detectBaud} loading={detecting} disabled={active}>
+            🔍 探测
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowAdvanced((v) => !v)} disabled={active}>
             {showAdvanced ? '收起高级' : '高级参数'}
           </Button>

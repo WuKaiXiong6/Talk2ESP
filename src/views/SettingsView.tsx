@@ -1,6 +1,6 @@
 // 文件路径：src/views/SettingsView.tsx
-// 文件作用：设置视图——LLM配置/连接测试/供应商预设/Key掩码/自动化/引脚黑名单可视化/工具链检查/数据清理/重置
-// 最后更新时间：2026-06-29-0057
+// 文件作用：设置视图——LLM/自动化/黑名单可视化/工具链/数据管理/重试/导入导出/重置
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -138,6 +138,46 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
     setCleaning(false);
   };
 
+  // #72 导出设置：拉取后端 settings.json 文本，触发浏览器下载
+  const exportSettings = async () => {
+    try {
+      const json = await invoke<string>('export_settings');
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'talk2esp-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify.success('设置已导出', '文件 talk2esp-settings.json 已下载');
+    } catch (e) {
+      notify.error('导出失败', String(e));
+    }
+  };
+
+  // #72 导入设置：选择 JSON 文件，校验后写回后端
+  const importSettings = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const imported = await invoke<Settings>('import_settings', { json: text });
+        setSettings(imported);
+        onSaved();
+        notify.success('设置已导入', '配置已写入 settings.json 并加载');
+      } catch (e) {
+        notify.error('导入失败', String(e));
+      }
+    };
+    input.click();
+  };
+
   if (!settings) return <div>加载设置中…</div>;
 
   return (
@@ -267,6 +307,27 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
         </div>
       </Card>
 
+      {/* #69 重试次数可配置 */}
+      <Card className="settings-section">
+        <h4>失败重试次数</h4>
+        <p className="settings-hint">各阶段失败时的重试上限（0-5）。0 = 失败不重试直接转人工；默认 3 保持既有行为。</p>
+        <div className="settings-row">
+          <label>编译重试</label>
+          <input type="number" min={0} max={5} value={settings.retry.compile}
+            onChange={(e) => update('retry.compile', Math.max(0, Math.min(5, +e.target.value || 0)))} />
+        </div>
+        <div className="settings-row">
+          <label>烧录重试</label>
+          <input type="number" min={0} max={5} value={settings.retry.flash}
+            onChange={(e) => update('retry.flash', Math.max(0, Math.min(5, +e.target.value || 0)))} />
+        </div>
+        <div className="settings-row">
+          <label>验证重试</label>
+          <input type="number" min={0} max={5} value={settings.retry.verify}
+            onChange={(e) => update('retry.verify', Math.max(0, Math.min(5, +e.target.value || 0)))} />
+        </div>
+      </Card>
+
       {/* 工具链 / 高级 */}
       <Card className="settings-section">
         <h4>工具链 / 高级</h4>
@@ -319,6 +380,9 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
 
       <div className="settings-actions">
         <Button variant="primary" onClick={save} loading={saving}>{saving ? '保存中…' : '💾 保存设置'}</Button>
+        {/* #72 设置导入导出 */}
+        <Button variant="secondary" onClick={exportSettings}>📤 导出设置</Button>
+        <Button variant="secondary" onClick={importSettings}>📥 导入设置</Button>
         {/* #72 重置 */}
         <Button variant="ghost" onClick={reset}>↺ 重置</Button>
       </div>

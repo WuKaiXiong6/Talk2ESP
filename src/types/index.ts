@@ -1,6 +1,6 @@
 // 文件路径：src/types/index.ts
 // 文件作用：前端类型定义，与 Rust 后端结构对齐
-// 最后更新时间：2026-06-29-0057
+// 最后更新时间：2026-06-29-0130
 
 export interface PortInfo {
   name: string;
@@ -151,6 +151,12 @@ export interface Settings {
   data_management: {
     max_projects: number;
     log_retention_days: number;
+  };
+  /// #69 各阶段重试上限（serde default 兼容旧设置文件）
+  retry: {
+    compile: number;
+    flash: number;
+    verify: number;
   };
 }
 

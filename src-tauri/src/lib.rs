@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/lib.rs
 // 文件作用：Talk2ESP 应用入口，注册 Tauri 命令与插件、管理全局状态
-// 最后更新时间：2026-06-29-0057
+// 最后更新时间：2026-06-29-0130
 
 pub mod device;
 pub mod toolchain;
@@ -73,6 +73,13 @@ fn check_driver(vid: Option<u16>, pid: Option<u16>) -> Option<device::DriverInfo
 #[tauri::command]
 fn test_device_connection(port: String, baud: Option<u32>) -> device::ConnectionTestResult {
     device::test_device_connection(&port, baud.unwrap_or(115200))
+}
+
+/// #35 自动探测设备当前波特率：逐个常见波特率尝试读取，命中则返回
+/// 探测失败返回 None（前端提示用户手动选择）
+#[tauri::command]
+fn detect_baud(port: String) -> Option<u32> {
+    device::detect_baud(&port)
 }
 
 /// M1：启动某端口的串口监控，行输出经 Channel 推送前端
@@ -488,6 +495,23 @@ fn save_settings(settings: settings::Settings) -> Result<(), String> {
     settings::save_settings(&settings)
 }
 
+/// #72 导出设置：返回 settings.json 的 JSON 字符串（前端触发下载）
+#[tauri::command]
+fn export_settings() -> Result<String, String> {
+    let s = settings::load_settings();
+    serde_json::to_string_pretty(&s).map_err(|e| format!("序列化设置失败: {e}"))
+}
+
+/// #72 导入设置：接收 JSON 字符串，校验后写回 settings.json
+/// 校验失败返回错误，不覆盖既有设置
+#[tauri::command]
+fn import_settings(json: String) -> Result<settings::Settings, String> {
+    let parsed: settings::Settings = serde_json::from_str(&json)
+        .map_err(|e| format!("设置文件格式无效: {e}"))?;
+    settings::save_settings(&parsed)?;
+    Ok(parsed)
+}
+
 /// 检查 LLM 是否已配置
 #[tauri::command]
 fn is_llm_configured() -> bool {
@@ -623,6 +647,12 @@ async fn run_full_pipeline(
         cancel_flag,
         flash_confirmed,
         confirm_before_flash: settings.automation.confirm_before_flash,
+        // #69 各阶段重试上限（已钳制到 [0,5]）
+        max_retry: orchestrator::MaxRetry {
+            compile: settings.retry.clamped_compile(),
+            flash: settings.retry.clamped_flash(),
+            verify: settings.retry.clamped_verify(),
+        },
     };
     let result = run_pipeline(storage, provider, config, move |event| {
         let _ = on_event.send(event);
@@ -689,6 +719,7 @@ pub fn run() {
             scan_devices,
             check_driver,
             test_device_connection,
+            detect_baud,
             start_monitor,
             send_serial,
             stop_monitor,
@@ -725,6 +756,8 @@ pub fn run() {
             write_stage_log,
             load_settings,
             save_settings,
+            export_settings,
+            import_settings,
             is_llm_configured,
             test_llm_connection,
             check_toolchain,

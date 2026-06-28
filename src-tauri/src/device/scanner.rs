@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/device/scanner.rs
-// 文件作用：设备扫描与型号识别，调 esptool flash-id 探测 chip/MAC/Flash
-// 最后更新时间：2026-06-28-1250
+// 文件作用：设备扫描与型号识别，调 esptool flash-id 探测 chip/MAC/Flash，含连接测试/驱动检测/波特率探测
+// 最后更新时间：2026-06-29-0130
 
 use serde::Serialize;
 use std::process::Command;
@@ -144,6 +144,36 @@ pub fn test_device_connection(port: &str, baud: u32) -> ConnectionTestResult {
         has_response,
         error: None,
     }
+}
+
+/// #35 波特率自动探测：逐个尝试常见波特率打开串口并读取，命中（收到有效字节）即返回该波特率
+/// 局限：依赖设备主动输出数据（如 ESP32 启动日志/loop 打印），仅适用于会主动输出的固件；
+/// 对静默固件可能探测失败，此时返回 None 并由前端提示用户手动选择。
+pub fn detect_baud(port: &str) -> Option<u32> {
+    const CANDIDATES: [u32; 5] = [115200, 9600, 57600, 230400, 460800];
+    use std::io::Read;
+    for &baud in &CANDIDATES {
+        let mut serial = match serialport::new(port, baud)
+            .timeout(Duration::from_millis(400))
+            .open()
+        {
+            Ok(s) => s,
+            Err(_) => continue, // 波特率通常不影响能否打开，但保险起见跳过
+        };
+        // 尝试读取 600ms，收到任意有效字节即认为该波特率命中
+        let mut buf = [0u8; 64];
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_millis(600) {
+            match serial.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) if n > 0 => return Some(baud),
+                Ok(_) => continue,
+                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
+                Err(_) => break,
+            }
+        }
+    }
+    None
 }
 
 /// 枚举 USB 串口（仅 VID/PID 元数据，不调 esptool）

@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/settings/mod.rs
-// 文件作用：用户设置模块，持久化到 ~/.talk2esp/settings.json，含 LLM/自动化/黑名单/工具链/数据管理配置
-// 最后更新时间：2026-06-29-0057
+// 文件作用：用户设置模块，持久化到 ~/.talk2esp/settings.json，含 LLM/自动化/黑名单/工具链/数据管理/重试配置
+// 最后更新时间：2026-06-29-0130
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -20,6 +20,9 @@ pub struct Settings {
     /// #71 日志与数据管理（新增字段，serde default 保证旧设置兼容）
     #[serde(default)]
     pub data_management: DataManagementSettings,
+    /// #69 各阶段重试上限（新增字段，serde default 保证旧设置兼容）
+    #[serde(default)]
+    pub retry: RetrySettings,
 }
 
 /// LLM 配置
@@ -78,6 +81,47 @@ pub struct DataManagementSettings {
     pub log_retention_days: u32,
 }
 
+/// #69 各阶段重试上限配置
+/// 各项取值范围 [0,5]：0 表示「失败不重试直接转人工」，默认 3 保持既有行为
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RetrySettings {
+    /// 编译阶段重试上限
+    pub compile: u32,
+    /// 烧录阶段重试上限
+    pub flash: u32,
+    /// 验证阶段重试上限
+    pub verify: u32,
+}
+
+impl Default for RetrySettings {
+    fn default() -> Self {
+        Self {
+            compile: 3,
+            flash: 3,
+            verify: 3,
+        }
+    }
+}
+
+impl RetrySettings {
+    /// 钳制单项到 [0,5]，避免用户填越界值
+    pub fn clamp_one(v: u32) -> u32 {
+        v.clamp(0, 5)
+    }
+    /// 钳制后的编译重试上限
+    pub fn clamped_compile(&self) -> u32 {
+        Self::clamp_one(self.compile)
+    }
+    /// 钳制后的烧录重试上限
+    pub fn clamped_flash(&self) -> u32 {
+        Self::clamp_one(self.flash)
+    }
+    /// 钳制后的验证重试上限
+    pub fn clamped_verify(&self) -> u32 {
+        Self::clamp_one(self.verify)
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -108,6 +152,8 @@ impl Default for Settings {
                 max_projects: 0,
                 log_retention_days: 0,
             },
+            // #69 默认各阶段 3 次重试，保持既有行为
+            retry: RetrySettings::default(),
         }
     }
 }
