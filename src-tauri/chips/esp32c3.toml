@@ -1,0 +1,24 @@
+# 文件路径：src-tauri/chips/esp32c3.toml
+# 文件作用：ESP32-C3 型号描述表（引脚黑名单/Flash偏移/FQBN）
+# 最后更新时间：2026-06-28-1011
+
+chip = "esp32c3"
+fqbn = "esp32:esp32:esp32c3"
+flash_offset_app = "0x10000"
+pin_count = 22
+# Error 级（阻断）：Flash 物理引脚(12-17)
+pin_blacklist_error = [12, 13, 14, 15, 16, 17]
+# Warn 级（提示）：Strapping(2,8,9) + USB D-/D+(18,19) + UART0(20,21)
+pin_blacklist_warn = [2, 8, 9, 18, 19, 20, 21]
+# 安全默认引脚
+pin_safe_default = [6, 7, 10, 11]
+
+[pin_notes]
+2 = "Strapping：上电电平影响芯片配置"
+8 = "Strapping：与 GPIO9 组合，拉低为非法组合"
+9 = "Strapping：启动模式选择（低=下载模式）"
+18 = "原生 USB D-，复用关闭 USB-JTAG"
+19 = "原生 USB D+，复用关闭 USB-JTAG"
+20 = "默认 UART0 RX，复用丢失串口烧录"
+21 = "默认 UART0 TX，复用丢失串口烧录"
+12 = "SPI0/1 Flash 物理引脚，禁止复用"

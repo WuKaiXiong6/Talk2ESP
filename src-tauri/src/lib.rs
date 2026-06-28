@@ -5,11 +5,14 @@
 pub mod device;
 pub mod toolchain;
 pub mod ai;
+pub mod chips;
+pub mod safety;
 
 use ai::openai_compat::OpenAiCompatProvider;
 use ai::{ChatMessage, FixSuggestion, GeneratedCode, LlmProvider, RequirementSpec, Verdict};
 use device::serial_monitor::{SerialLine, SerialMonitor};
 use device::DeviceInfo;
+use safety::{check_code_pins, scan_dangerous_ops, DangerReport, PinViolations};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -150,6 +153,25 @@ async fn llm_judge(serial_output: String, expectation: String) -> Result<Verdict
     provider.judge(&serial_output, &expectation).await
 }
 
+/// M4：校验代码引脚是否符合黑名单
+#[tauri::command]
+fn check_pins(code: String, chip: String) -> Result<PinViolations, String> {
+    let descriptor = chips::load_descriptor(&chip)?;
+    Ok(check_code_pins(&code, &descriptor))
+}
+
+/// M4：扫描代码危险操作
+#[tauri::command]
+fn scan_dangers(code: String) -> Vec<DangerReport> {
+    scan_dangerous_ops(&code)
+}
+
+/// M4：列出已支持的芯片型号
+#[tauri::command]
+fn list_chips() -> Vec<String> {
+    chips::list_supported_chips()
+}
+
 /// Channel 流式通信验证（M0 遗留）
 #[derive(Serialize, Clone)]
 #[serde(tag = "event", content = "data")]
@@ -188,6 +210,9 @@ pub fn run() {
             llm_generate_code,
             llm_diagnose,
             llm_judge,
+            check_pins,
+            scan_dangers,
+            list_chips,
             start_tick
         ])
         .run(tauri::generate_context!())

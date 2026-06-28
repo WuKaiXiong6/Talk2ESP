@@ -3641,6 +3641,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "dotenvy",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3650,6 +3651,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-shell",
  "tokio",
+ "toml 0.8.2",
 ]
 
 [[package]]
