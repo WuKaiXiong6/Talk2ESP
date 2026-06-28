@@ -46,6 +46,23 @@
 }
 
 .device-port { font-size: var(--font-size-lg); font-weight: 700; color: var(--color-primary); }
+.device-port-wrap { display: flex; align-items: center; gap: var(--space-2); }
+.device-alias {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  background: var(--color-bg-hover);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+.device-card-header-right { display: flex; align-items: center; gap: var(--space-1); }
+.alias-edit { display: flex; align-items: center; gap: var(--space-1); }
+.alias-edit input {
+  padding: 2px var(--space-1);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  width: 100px;
+}
 
 .device-card-body { display: flex; flex-direction: column; gap: var(--space-1); }
 

@@ -34,6 +34,22 @@ export function DevicesView(props: DevicesViewProps) {
   // #43 热插拔感知：前端轮询比对
   const [plugEvents, setPlugEvents] = useState<PlugEvent[]>([]);
   const prevPortsRef = useRef<string[]>([]);
+  // #51 设备别名与记忆：localStorage 持久化 port -> alias
+  const [aliases, setAliases] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('talk2esp-device-aliases') ?? '{}'); } catch { return {}; }
+  });
+  const [editingAlias, setEditingAlias] = useState<string | null>(null);
+  const [aliasValue, setAliasValue] = useState('');
+
+  // #51 持久化别名
+  const saveAlias = (port: string, alias: string) => {
+    const next = { ...aliases };
+    if (alias.trim()) next[port] = alias.trim();
+    else delete next[port];
+    setAliases(next);
+    localStorage.setItem('talk2esp-device-aliases', JSON.stringify(next));
+    setEditingAlias(null);
+  };
 
   // #43 热插拔感知：每 3 秒轮询设备列表比对变化（不改后端扫描）
   useEffect(() => {
@@ -134,11 +150,27 @@ export function DevicesView(props: DevicesViewProps) {
           {devices.map((d) => (
             <Card key={d.port} interactive className={`device-card ${selectedPort === d.port ? 'selected' : ''}`}>
               <div className="device-card-header">
-                <span className="device-port">{d.port}</span>
-                {d.detected ? (
-                  <Badge tone="success">✓ 已识别</Badge>
+                <div className="device-port-wrap">
+                  <span className="device-port">{d.port}</span>
+                  {/* #51 设备别名 */}
+                  {aliases[d.port] && editingAlias !== d.port && (
+                    <span className="device-alias" title="自定义别名">{aliases[d.port]}</span>
+                  )}
+                </div>
+                {editingAlias === d.port ? (
+                  <div className="alias-edit" onClick={(e) => e.stopPropagation()}>
+                    <input value={aliasValue} onChange={(e) => setAliasValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(d.port, aliasValue); if (e.key === 'Escape') setEditingAlias(null); }}
+                      placeholder="输入别名" autoFocus />
+                    <IconButton label="确认" onClick={() => saveAlias(d.port, aliasValue)}>✓</IconButton>
+                    <IconButton label="取消" onClick={() => setEditingAlias(null)}>✕</IconButton>
+                  </div>
                 ) : (
-                  <Badge tone="warning">⚠ 未识别</Badge>
+                  <div className="device-card-header-right">
+                    {d.detected ? <Badge tone="success">✓ 已识别</Badge> : <Badge tone="warning">⚠ 未识别</Badge>}
+                    {/* #51 别名编辑 */}
+                    <IconButton label="设置别名" onClick={(e) => { e.stopPropagation(); setEditingAlias(d.port); setAliasValue(aliases[d.port] ?? ''); }}>🏷</IconButton>
+                  </div>
                 )}
               </div>
               <div className="device-card-body">

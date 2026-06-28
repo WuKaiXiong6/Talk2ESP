@@ -174,6 +174,11 @@ fn make_provider() -> Result<OpenAiCompatProvider, String> {
 static CANCEL_FLAGS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicBool>>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
+/// #24 全局烧录确认令牌注册表：project_id -> AtomicBool
+/// 仅当 confirm_before_flash=true 时使用，前端确认后置 true，流水线继续烧录
+static FLASH_CONFIRM_FLAGS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicBool>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
 /// M3：通用对话
 #[tauri::command]
 async fn llm_chat(messages: Vec<ChatMessage>) -> Result<String, String> {
@@ -354,6 +359,17 @@ fn rename_project(
 ) -> Result<Project, String> {
     let storage = storage.lock().unwrap();
     storage.rename_project(&project_id, &new_name)
+}
+
+/// #57 复制项目为副本
+#[tauri::command]
+fn duplicate_project(
+    project_id: String,
+    new_name: String,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<Project, String> {
+    let storage = storage.lock().unwrap();
+    storage.duplicate_project(&project_id, &new_name)
 }
 
 /// #56 导出项目为 zip 字节流
@@ -557,9 +573,13 @@ async fn run_full_pipeline(
     let storage = Arc::new(tokio::sync::Mutex::new(ProjectStorage::from_default()));
     // #25 注册取消令牌
     let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // #24 烧录确认令牌
+    let flash_confirmed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     {
         let mut flags = CANCEL_FLAGS.lock().unwrap();
         flags.insert(project_id.clone(), cancel_flag.clone());
+        // #24 同时注册烧录确认令牌
+        FLASH_CONFIRM_FLAGS.lock().unwrap().insert(project_id.clone(), flash_confirmed.clone());
     }
     let config = PipelineConfig {
         project_id: project_id.clone(),
@@ -568,13 +588,16 @@ async fn run_full_pipeline(
         auto_mode: settings.automation.mode == "full",
         skip_coding_with_code,
         cancel_flag,
+        flash_confirmed,
+        confirm_before_flash: settings.automation.confirm_before_flash,
     };
     let result = run_pipeline(storage, provider, config, move |event| {
         let _ = on_event.send(event);
     })
     .await;
-    // 清理取消令牌
+    // 清理令牌
     CANCEL_FLAGS.lock().unwrap().remove(&project_id);
+    FLASH_CONFIRM_FLAGS.lock().unwrap().remove(&project_id);
     result
 }
 
@@ -587,6 +610,18 @@ fn cancel_pipeline(project_id: String) -> Result<bool, String> {
         Ok(true)
     } else {
         Ok(false) // 无运行中的流水线
+    }
+}
+
+/// #24 确认烧录：置烧录确认令牌，使等待中的流水线继续进入烧录
+#[tauri::command]
+fn confirm_flash(project_id: String) -> Result<bool, String> {
+    let flags = FLASH_CONFIRM_FLAGS.lock().unwrap();
+    if let Some(flag) = flags.get(&project_id) {
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(true)
+    } else {
+        Ok(false) // 无等待确认的流水线
     }
 }
 
@@ -644,6 +679,7 @@ pub fn run() {
             save_project,
             delete_project,
             rename_project,
+            duplicate_project,
             export_project,
             import_project,
             append_message,
@@ -658,6 +694,7 @@ pub fn run() {
             check_toolchain,
             run_full_pipeline,
             cancel_pipeline,
+            confirm_flash,
             start_tick
         ])
         .run(tauri::generate_context!())

@@ -2,9 +2,10 @@
 // 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照
 // 最后更新时间：2026-06-28-1240
 
-import { useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type {
-  DeviceInfo, PipelineOutcome, ConversationMessage,
+  DeviceInfo, PipelineOutcome, ConversationMessage, ChipDescriptor,
 } from '../types';
 import { Button, Badge } from '../components/ui';
 import { CodeBlock } from '../components/CodeBlock';
@@ -15,6 +16,7 @@ import {
 } from '../components/PipelineTimeline';
 import { RequirementExamples } from '../components/RequirementExamples';
 import { ChatMessage } from '../components/ChatMessage';
+import { checkCodeFormat, extractPinRefs, classifyPin } from '../utils/codeCheck';
 
 /// 开发视图属性
 export interface DevelopViewProps {
@@ -56,6 +58,11 @@ export interface DevelopViewProps {
   onExportCode: (code: string) => void;
   // #77 重新生成
   onRegenerate?: () => void;
+  // #24 确认烧录
+  onConfirmFlash?: () => void;
+  // #19 需求历史
+  reqHistory: string[];
+  onClearReqHistory?: () => void;
 }
 
 /// 日志/对话 子标签页
@@ -67,7 +74,8 @@ export function DevelopView(props: DevelopViewProps) {
     progress, generatedCode, llmConfigured, chatHistory, logs, outcome, logEndRef,
     retryMap, stageDurations, failReasonMap, llmStats, thinking, runHistory,
     onRefreshDevices, onPort, onChip, onRequirement, onChat, onRun, onStop, onGoSettings,
-    onRerunEdited, onExportCode, onRegenerate,
+    onRerunEdited, onExportCode, onRegenerate, onConfirmFlash,
+    reqHistory, onClearReqHistory,
   } = props;
 
   // #22 对话区/日志区分离
@@ -79,6 +87,25 @@ export function DevelopView(props: DevelopViewProps) {
   const [showDiff, setShowDiff] = useState(false);
   // 最近一次 AI 修复前的代码（用于 diff）；首版生成时为空
   const lastFixedCode = '';
+  // #84 格式检查 + #82 引脚高亮
+  const [showCheck, setShowCheck] = useState(false);
+  const [chipDescriptor, setChipDescriptor] = useState<ChipDescriptor | null>(null);
+
+  // #82 加载芯片引脚描述符（用于判定引脚黑名单）
+  useEffect(() => {
+    invoke<ChipDescriptor>('get_chip_descriptor', { chip: selectedChip })
+      .then(setChipDescriptor)
+      .catch(() => setChipDescriptor(null));
+  }, [selectedChip]);
+
+  // #84 格式检查结果（编辑模式时实时检查）
+  const formatIssues = editing ? checkCodeFormat(editedCode) : [];
+  // #82 引脚引用与黑名单判定
+  const pinRefs = editing ? extractPinRefs(editedCode) : [];
+  const blacklist = chipDescriptor
+    ? { error: chipDescriptor.pin_blacklist_error, errorOctal: chipDescriptor.pin_blacklist_error_octal ?? [], warn: chipDescriptor.pin_blacklist_warn }
+    : { error: [], errorOctal: [], warn: [] };
+  const riskyPins = pinRefs.filter((r) => classifyPin(r.pin, blacklist) !== 'safe');
 
   // #13/#14 计算时间线阶段状态
   const stages = deriveStageStatuses(
@@ -131,6 +158,23 @@ export function DevelopView(props: DevelopViewProps) {
           />
           {/* #18 需求快捷示例 */}
           {!running && <RequirementExamples onSelect={onRequirement} />}
+          {/* #19 需求历史持久化：下拉选择历史需求 */}
+          {!running && reqHistory.length > 0 && (
+            <div className="req-history">
+              <span className="req-history-label">🕘 历史：</span>
+              <select
+                className="req-history-select"
+                value=""
+                onChange={(e) => { if (e.target.value) onRequirement(e.target.value); }}
+              >
+                <option value="">选择历史需求…</option>
+                {reqHistory.map((r, i) => (
+                  <option key={i} value={r}>{r.slice(0, 50)}{r.length > 50 ? '…' : ''}</option>
+                ))}
+              </select>
+              <Button variant="ghost" size="sm" onClick={onClearReqHistory}>清空</Button>
+            </div>
+          )}
           <div className="btn-row">
             <Button variant="secondary" onClick={onChat} disabled={running || !requirement.trim()}>
               与 AI 对话澄清
@@ -146,6 +190,23 @@ export function DevelopView(props: DevelopViewProps) {
 
         {(running || progress.percent > 0) && (
           <div className="progress-section">
+            {/* #24 烧录前确认对话框 */}
+            {currentState === 'flashingconfirm' && (
+              <div className="flash-confirm-dialog" role="alertdialog" aria-label="烧录确认">
+                <div className="flash-confirm-icon" aria-hidden>⚠️</div>
+                <div className="flash-confirm-body">
+                  <div className="flash-confirm-title">即将烧录到设备</div>
+                  <div className="flash-confirm-desc">
+                    代码已编译完成，确认要烧录到 <strong>{selectedPort}</strong>（{selectedChip}）吗？
+                    <br />烧录期间请勿拔出设备。
+                  </div>
+                  <div className="flash-confirm-actions">
+                    <Button variant="primary" onClick={() => onConfirmFlash?.()}>✓ 确认烧录</Button>
+                    <Button variant="danger" onClick={onStop}>✕ 取消</Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="progress-header">
               {/* #27 AI 思考子步骤可视化 */}
               {thinking && (
@@ -219,10 +280,46 @@ export function DevelopView(props: DevelopViewProps) {
                       {showDiff ? '隐藏' : '查看'} diff
                     </Button>
                   )}
+                  {/* #84 格式检查 */}
+                  <Button variant="secondary" size="sm" onClick={() => setShowCheck((v) => !v)}>
+                    {showCheck ? '隐藏' : '🔍'} 检查 ({formatIssues.length})
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setEditedCode(generatedCode.main_ino); }}>
                     取消编辑
                   </Button>
                 </div>
+                {/* #84 格式化检查结果 */}
+                {showCheck && (
+                  <div className="code-check-panel">
+                    {formatIssues.length === 0 ? (
+                      <div className="check-ok">✓ 未发现明显格式问题</div>
+                    ) : (
+                      <ul className="check-issues">
+                        {formatIssues.map((iss, i) => (
+                          <li key={i} className={`check-issue check-${iss.severity}`}>
+                            <span className="check-loc">第{iss.line}行</span>
+                            <span className="check-msg">{iss.message}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {/* #82 引脚高亮悬浮：列出有风险的引脚引用 */}
+                    {riskyPins.length > 0 && (
+                      <div className="pin-refs-warn">
+                        <div className="pin-refs-title">⚠ 引脚黑名单提示：</div>
+                        {riskyPins.map((r, i) => {
+                          const cls = classifyPin(r.pin, blacklist);
+                          return (
+                            <div key={i} className={`pin-ref pin-ref-${cls}`} title={r.context}>
+                              第{r.line}行 GPIO{r.pin}
+                              <span className="pin-ref-tag">{cls === 'error' ? '禁止' : '警告'}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* #83 AI 修复前后 diff */}
                 {showDiff && lastFixedCode && (
                   <CodeDiff oldCode={lastFixedCode} newCode={editedCode} title="AI 修复前 → 编辑后" />

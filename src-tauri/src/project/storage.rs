@@ -170,6 +170,28 @@ impl ProjectStorage {
         Ok(project)
     }
 
+    /// #57 复制项目为副本（含全部代码/对话/日志），新 id 为 <原id>-copy-<时间戳>
+    pub fn duplicate_project(&self, project_id: &str, new_name: &str) -> Result<Project, String> {
+        let src_dir = self.project_dir(project_id);
+        if !src_dir.exists() {
+            return Err(format!("源项目 {project_id} 不存在"));
+        }
+        let new_id = format!("{project_id}-copy-{}", timestamp_id());
+        let new_dir = self.project_dir(&new_id);
+        // 递归复制目录
+        copy_dir_recursive(&src_dir, &new_dir)?;
+        // 加载副本并更新 id/name/时间戳
+        let mut project = self.load_project(&new_id)?;
+        project.id = new_id.clone();
+        project.name = new_name.to_string();
+        project.state = crate::project::model::ProjectState::Drafting;
+        project.created_at = now_iso();
+        project.updated_at = now_iso();
+        project.retry_counts = crate::project::model::RetryCounts::default();
+        self.save_project(&project)?;
+        Ok(project)
+    }
+
     /// #56 导出项目为 zip 字节流（包含 project.json/conversation.jsonl/src/logs）
     pub fn export_project(&self, project_id: &str) -> Result<Vec<u8>, String> {
         let dir = self.project_dir(project_id);
@@ -277,6 +299,23 @@ fn timestamp_id() -> String {
         .map(|d| d.as_millis() % 100000)
         .unwrap_or(0);
     format!("{ms:05}")
+}
+
+/// #57 递归复制目录
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let target = dst.join(&name);
+        if path.is_dir() {
+            copy_dir_recursive(&path, &target)?;
+        } else {
+            fs::copy(&path, &target).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn now_iso() -> String {

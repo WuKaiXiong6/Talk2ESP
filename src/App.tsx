@@ -37,6 +37,10 @@ function AppInner() {
   const [selectedChip, setSelectedChip] = useState<string>('esp32s3');
   const [chips, setChips] = useState<string[]>([]);
   const [requirement, setRequirement] = useState<string>('');
+  // #19 需求历史持久化：localStorage 保存最近 20 条需求
+  const [reqHistory, setReqHistory] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('talk2esp-req-history') ?? '[]'); } catch { return []; }
+  });
   const [running, setRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [currentState, setCurrentState] = useState<string>('');
@@ -251,6 +255,14 @@ function AppInner() {
     setCurrentState('coding');
     setProgress({ percent: 5, message: '启动中…' });
     setGeneratedCode(null);
+    // #19 记录需求历史（去重，最近20条）
+    if (requirement.trim()) {
+      setReqHistory((h) => {
+        const next = [requirement, ...h.filter((r) => r !== requirement)].slice(0, 20);
+        localStorage.setItem('talk2esp-req-history', JSON.stringify(next));
+        return next;
+      });
+    }
     // 重置阶段跟踪状态
     setRetryMap({});
     setStageDurations({});
@@ -475,12 +487,19 @@ function AppInner() {
                 chatHistory={chatHistory} logs={logs} outcome={outcome} logEndRef={logEndRef}
                 retryMap={retryMap} stageDurations={stageDurations} failReasonMap={failReasonMap}
                 llmStats={llmStats} thinking={thinking} runHistory={runHistory}
+                reqHistory={reqHistory}
+                onClearReqHistory={() => { setReqHistory([]); localStorage.removeItem('talk2esp-req-history'); }}
                 onRefreshDevices={refreshDevices} onPort={setSelectedPort} onChip={setSelectedChip}
                 onRequirement={setRequirement} onChat={chatWithAi} onRun={runAutoPipeline} onStop={stopPipeline}
                 onGoSettings={() => setView('settings')}
                 onRerunEdited={rerunEditedCode}
                 onExportCode={exportCode}
                 onRegenerate={chatWithAi}
+                onConfirmFlash={() => {
+                  if (currentProjectId) {
+                    invoke('confirm_flash', { projectId: currentProjectId }).catch(() => {});
+                  }
+                }}
               />
             )}
             {view === 'devices' && (

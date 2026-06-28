@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1330
+最后更新时间：2026-06-28-1620
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -656,6 +656,37 @@
 **未深度实现项**（已在对应阶段记录遗留）：#57 项目标签、#79 AI讲解代码、#82 引脚高亮悬浮、#84 格式化检查、#94 自动更新、#38 多串口多标签、#39 数据图表、#50 多设备并行、#80 多模型对比、#93 i18n。
 
 **待人工验证**：所有 GUI 交互现象（各阶段均标注「待人工验证」），需运行 `npm run tauri dev` 逐一确认。
+
+### 决策 2026-06-28-1620：#24 烧录前确认——改默认 false + 增设 FlashingConfirm 状态门禁
+- **时间**：2026-06-28-1620
+- **背景**：#24 烧录前确认对话框此前未实现（pipeline 从未检查 confirm_before_flash，实际行为=自动烧录）。直接让 pipeline 遵守开关会改变默认行为（默认 true → 变为需确认）。
+- **决策**：经用户确认，将 `confirm_before_flash` 默认值从 true 改为 false（保持既有"自动烧录"实际行为不变），同时在 pipeline 烧录前增设 FlashingConfirm 状态门禁：开启时进入 flashingconfirm 状态轮询等待 `confirm_flash` 命令（最长5分钟），关闭时直接烧录。
+- **备选方案**：①维持现状不实现（高优未落地）；②默认 true+增设门禁（改变默认行为，违背约束）。
+- **影响**：`cargo test --lib` 26 测试全过（default_settings 断言已更新为 false）；默认行为不变（此前开关被忽略≈false）；用户开启后真正生效。
+- **回滚条件或后续观察点**：需人工验证开启 confirm_before_flash 后流水线确实在烧录前暂停并等待确认。
+
+### 验证 2026-06-28-1620：补全剩余可行项（ux-followup 分支）— #24/#57/#60/#51/#19/#82/#84
+- **验证时间**：2026-06-28-1620
+- **验证对象**：烧录前确认门禁 + 项目复制与模板化 + 项目列表分页 + 设备别名与记忆 + 需求历史持久化 + 引脚高亮悬浮深度版 + 代码格式化检查
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7 + Rust
+- **实现内容**：
+  1. **#24 烧录前确认**：settings 默认 confirm_before_flash=false（保持自动烧录行为）；pipeline 烧录前检查开关，true 时进 flashingconfirm 状态轮询等待 confirm_flash 命令；lib.rs FLASH_CONFIRM_FLAGS 注册表 + confirm_flash 命令；前端 DevelopView 显示确认对话框（确认/取消）；
+  2. **#57 项目复制与模板化**：storage.rs duplicate_project（递归 copy_dir_recursive 复制全部文件，新 id=<原id>-copy-<ts>，状态重置为 Drafting）；lib.rs duplicate_project 命令；前端项目卡片「复制」按钮；
+  3. **#60 项目列表分页**：每页20项，搜索/排序变化重置到第一页，上一页/下一页+页码信息；
+  4. **#51 设备别名与记忆**：localStorage 持久化 port→alias，设备卡片显示别名 + 🏷 编辑按钮（内联编辑）；
+  5. **#19 需求历史持久化**：localStorage 持久化最近20条需求（去重），DevelopView 下拉选择历史需求 + 清空；
+  6. **#82 引脚高亮悬浮深度版**：codeCheck.ts extractPinRefs 提取代码中引脚引用（pinMode/digitalWrite/GPIOxx 等），classifyPin 判定黑名单；编辑模式检查面板列出有风险引脚（禁止/警告）；
+  7. **#84 代码格式化检查**：codeCheck.ts checkCodeFormat 启发式检查（括号配对、语句缺分号、大括号配平），编辑模式检查面板展示问题列表。
+- **核心逻辑改动**（默认行为不变）：
+  - `pipeline.rs`：PipelineConfig 增 flash_confirmed + confirm_before_flash（Default=false），烧录前门禁；
+  - `settings/mod.rs`：confirm_before_flash 默认改 false（保持实际行为）+ 断言更新；
+  - `lib.rs`：FLASH_CONFIRM_FLAGS 注册表 + confirm_flash 命令 + duplicate_project 命令；
+  - `storage.rs`：duplicate_project + copy_dir_recursive。
+- **观察现象**：
+  - `cargo build` 通过（4 既有 warning）；`cargo test --lib` 26 全过 1 ignored（0 回归）；
+  - `tsc --noEmit` 通过；`npm run build` 成功（77 模块，456KB JS）。
+- **结论**：部分通过（自动化全通过；GUI 确认门禁/复制/分页/别名/历史/检查面板现象待人工验证）
+- **遗留问题**：①烧录确认门禁需真实流水线验证暂停/继续；②格式检查为启发式，非完整语法分析，可能有误报。
 
 ---
 

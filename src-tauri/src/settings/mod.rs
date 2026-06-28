@@ -78,7 +78,9 @@ impl Default for Settings {
             },
             automation: AutomationSettings {
                 mode: "full".into(),
-                confirm_before_flash: true,
+                // #24 默认 false：保持既有"自动烧录"实际行为不变（此前开关被忽略即等价 false）；
+                // 用户开启后 pipeline 会在烧录前进入 FlashingConfirm 状态等待确认
+                confirm_before_flash: false,
             },
             pin_blacklist: PinBlacklistSettings {
                 extra_error: Vec::new(),
@@ -137,7 +139,8 @@ mod tests {
         let s = Settings::default();
         assert_eq!(s.llm.provider, "openai_compat");
         assert_eq!(s.automation.mode, "full");
-        assert!(s.automation.confirm_before_flash);
+        // #24 默认 false，保持既有"自动烧录"实际行为
+        assert!(!s.automation.confirm_before_flash);
         assert_eq!(s.toolchain.default_baud, 115200);
     }
 

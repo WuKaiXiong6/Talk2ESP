@@ -49,6 +49,11 @@ pub struct PipelineConfig {
     /// #25 取消令牌：外部置 true 时，流水线在下一个阶段间隙尽快终止
     /// 默认为一个始终为 false 的令牌（即不取消，保持既有行为）
     pub cancel_flag: Arc<std::sync::atomic::AtomicBool>,
+    /// #24 烧录前确认令牌：当 confirm_before_flash=true 时，烧录阶段会等待此 flag 被置 true
+    /// confirm_before_flash=false（默认）时此令牌不生效，保持既有自动烧录行为
+    pub flash_confirmed: Arc<std::sync::atomic::AtomicBool>,
+    /// #24 是否启用烧录前确认（来自 settings.automation.confirm_before_flash）
+    pub confirm_before_flash: bool,
 }
 
 impl Default for PipelineConfig {
@@ -67,6 +72,8 @@ impl Default for PipelineConfig {
             auto_mode: true,
             skip_coding_with_code: None,
             cancel_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            flash_confirmed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            confirm_before_flash: false,
         }
     }
 }
@@ -245,6 +252,30 @@ where
                     let summary = format!("AI 诊断失败: {e}");
                     return finalize_failed(storage, config.project_id, summary, outcome, &mut on_event).await;
                 }
+            }
+        }
+
+        // #24 烧录前确认门禁：confirm_before_flash=true 时进入 FlashingConfirm 状态等待前端确认
+        if config.confirm_before_flash {
+            emit(&mut on_event, PipelineEvent::StateChanged { state: "flashingconfirm".into() });
+            emit(&mut on_event, PipelineEvent::Progress { percent: 65, message: "等待用户确认烧录…".into() });
+            emit(&mut on_event, PipelineEvent::StageLog {
+                stage: "flashing".into(),
+                message: "已进入烧录前确认状态，等待用户确认（可在设置关闭此确认）".into(),
+            });
+            // 轮询等待确认或取消（每 200ms 检查一次，最长等待 5 分钟）
+            let wait_start = std::time::Instant::now();
+            loop {
+                if config.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Err("用户在烧录确认阶段取消了流水线".to_string());
+                }
+                if config.flash_confirmed.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+                if wait_start.elapsed().as_secs() > 300 {
+                    return Err("烧录确认等待超时（5 分钟）".to_string());
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             }
         }
 

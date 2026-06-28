@@ -35,6 +35,9 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // #56 导入
   const [importing, setImporting] = useState(false);
+  // #60 分页
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const refresh = () => {
     setLoading(true);
@@ -62,6 +65,20 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
     });
     return sorted;
   }, [projects, search, sortKey]);
+
+  // #60 分页：搜索/排序变化时重置到第一页
+  useEffect(() => { setPage(1); }, [search, sortKey]);
+  const totalPages = Math.max(1, Math.ceil(filteredSorted.length / PAGE_SIZE));
+  const paged = filteredSorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // #57 复制项目
+  const duplicateProject = async (p: Project) => {
+    try {
+      await invoke('duplicate_project', { projectId: p.id, newName: `${p.name}_副本` });
+      notify.success('已复制项目', `${p.name}_副本`);
+      refresh();
+    } catch (e) { notify.error('复制失败', String(e)); }
+  };
 
   const viewDetail = async (p: Project) => {
     setSelected(p);
@@ -216,8 +233,9 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
           actions={!search ? [{ label: '去开发', onClick: onGoDevelop }] : undefined}
         />
       ) : (
+        <>
         <div className="projects-grid">
-          {filteredSorted.map((p) => (
+          {paged.map((p) => (
             <Card key={p.id} interactive className="project-card" onClick={() => viewDetail(p)}>
               <div className="project-card-header">
                 {renamingId === p.id ? (
@@ -241,6 +259,8 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
               </div>
               <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
                 <IconButton label="重命名" onClick={() => startRename(p)}>✏</IconButton>
+                {/* #57 复制项目 */}
+                <IconButton label="复制" onClick={() => duplicateProject(p)}>📋</IconButton>
                 <IconButton label="导出" onClick={() => exportProject(p)}>📦</IconButton>
                 <IconButton label="删除" onClick={() => setConfirmDeleteId(p.id)}>🗑</IconButton>
               </div>
@@ -256,6 +276,15 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
             </Card>
           ))}
         </div>
+        {/* #60 分页 */}
+        {totalPages > 1 && (
+          <div className="pagination">
+            <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>上一页</Button>
+            <span className="pagination-info">第 {page} / {totalPages} 页（共 {filteredSorted.length} 项）</span>
+            <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>下一页</Button>
+          </div>
+        )}
+        </>
       )}
     </div>
   );
