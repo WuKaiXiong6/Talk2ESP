@@ -1,6 +1,6 @@
 // 文件路径：src/views/ProjectsView.tsx
-// 文件作用：项目管理视图——搜索/排序/重命名/导入导出/删除二次确认+回收站(#58)/状态刷新/卡片化
-// 最后更新时间：2026-06-29-0130
+// 文件作用：项目管理视图——搜索/排序/重命名/导入导出/删除二次确认+回收站(#58)/状态刷新/卡片化/i18n
+// 最后更新时间：2026-06-29-0230
 
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +9,7 @@ import { Button, Badge, Card, IconButton } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonTable } from '../components/Skeleton';
 import { useNotifications } from '../components/notifications';
+import { useI18n } from '../i18n';
 import './ProjectsView.css';
 
 /// 排序方式
@@ -20,6 +21,7 @@ interface ProjectsViewProps {
 
 export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
   const notify = useNotifications();
+  const { t } = useI18n();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [detail, setDetail] = useState<{ code: string; messages: ConversationMessage[] } | null>(null);
@@ -182,38 +184,38 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
     return (
       <div className="project-detail ui-card">
         <div className="detail-toolbar">
-          <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>← 返回列表</Button>
-          <Button variant="secondary" size="sm" onClick={() => exportProject(selected)}>📦 导出</Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>{t('proj.backList')}</Button>
+          <Button variant="secondary" size="sm" onClick={() => exportProject(selected)}>{t('proj.export')}</Button>
         </div>
         <h3>{selected.name}</h3>
         <div className="detail-meta">
-          <span>芯片: <strong>{selected.chip}</strong></span>
-          <span>状态: <Badge tone={selected.state === 'archived' ? 'success' : selected.state === 'failed' ? 'danger' : 'info'}>{selected.state}</Badge></span>
-          <span>端口: {selected.port ?? '-'}</span>
-          <span>创建: {selected.created_at}</span>
-          <span>重试: 编{selected.retry_counts.compile}/烧{selected.retry_counts.flash}/验{selected.retry_counts.verify}</span>
+          <span>{t('proj.detailChip')}: <strong>{selected.chip}</strong></span>
+          <span>{t('proj.detailState')}: <Badge tone={selected.state === 'archived' ? 'success' : selected.state === 'failed' ? 'danger' : 'info'}>{selected.state}</Badge></span>
+          <span>{t('proj.detailPort')}: {selected.port ?? '-'}</span>
+          <span>{t('proj.detailCreated')}: {selected.created_at}</span>
+          <span>{t('proj.detailRetry')}: {t('proj.retryCompile')}{selected.retry_counts.compile}/{t('proj.retryFlash')}{selected.retry_counts.flash}/{t('proj.retryVerify')}{selected.retry_counts.verify}</span>
         </div>
-        <h4>主程序代码</h4>
-        <pre className="code-block">{detail?.code ?? '加载中…'}</pre>
-        <h4>对话记录（{detail?.messages.length ?? 0}）</h4>
+        <h4>{t('proj.mainCode')}</h4>
+        <pre className="code-block">{detail?.code ?? t('proj.loading')}</pre>
+        <h4>{t('proj.conversation')}（{detail?.messages.length ?? 0}）</h4>
         <div className="messages">
           {detail?.messages.map((m, i) => (
             <div key={i} className={`msg msg-${m.role}`}>
-              <span className="msg-role">{m.role === 'user' ? '我' : 'AI'}:</span>
+              <span className="msg-role">{m.role === 'user' ? t('proj.roleMe') : t('proj.roleAi')}:</span>
               <span className="msg-content">{m.content}</span>
             </div>
           ))}
-          {detail && detail.messages.length === 0 && <p className="empty-inline">暂无对话记录</p>}
+          {detail && detail.messages.length === 0 && <p className="empty-inline">{t('proj.noConversation')}</p>}
         </div>
         <div className="detail-actions">
-          <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(selected.id)}>删除项目</Button>
+          <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(selected.id)}>{t('proj.delete')}</Button>
         </div>
         {confirmDeleteId === selected.id && (
           <div className="confirm-dialog" role="alertdialog">
-            <span>确认删除项目「{selected.name}」？项目将移入回收站，可在回收站恢复。</span>
+            <span>{t('proj.confirmDelete', { name: selected.name })}</span>
             <div className="confirm-actions">
-              <Button variant="danger" size="sm" onClick={confirmDelete}>确认删除</Button>
-              <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>取消</Button>
+              <Button variant="danger" size="sm" onClick={confirmDelete}>{t('proj.confirmDeleteBtn')}</Button>
+              <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>{t('btn.cancel')}</Button>
             </div>
           </div>
         )}
@@ -224,7 +226,7 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
   return (
     <div className="projects-view">
       <div className="view-header">
-        <h3>项目列表（{filteredSorted.length}/{projects.length}）</h3>
+        <h3>{t('proj.list')}（{filteredSorted.length}/{projects.length}）</h3>
         <div className="projects-actions">
           {/* #56 导入 */}
           <label className="import-label">
@@ -234,7 +236,7 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
               className="hidden-file"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) importProject(f); e.target.value = ''; }}
             />
-            <Button variant="secondary" size="sm" loading={importing} disabled={importing}>📥 导入</Button>
+            <Button variant="secondary" size="sm" loading={importing} disabled={importing}>{t('proj.import')}</Button>
           </label>
         </div>
       </div>
@@ -245,17 +247,17 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
           className="projects-search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="🔍 搜索项目名/芯片/ID…"
+          placeholder={t('proj.searchPlaceholder')}
         />
         <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="projects-sort">
-          <option value="updated">按更新时间</option>
-          <option value="created">按创建时间</option>
-          <option value="name">按名称</option>
-          <option value="state">按状态</option>
+          <option value="updated">{t('proj.sortUpdated')}</option>
+          <option value="created">{t('proj.sortCreated')}</option>
+          <option value="name">{t('proj.sortName')}</option>
+          <option value="state">{t('proj.sortState')}</option>
         </select>
         {/* #58 回收站入口 */}
         <Button variant="ghost" size="sm" onClick={() => { setShowTrash((v) => !v); if (!showTrash) refreshTrash(); }}>
-          🗑 回收站 {trash.length > 0 && `(${trash.length})`}
+          {t('proj.trash')} {trash.length > 0 && `(${trash.length})`}
         </Button>
       </div>
 
@@ -263,20 +265,20 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
       {showTrash && (
         <Card className="trash-panel">
           <div className="trash-header">
-            <h4>回收站（{trash.length}）</h4>
+            <h4>{t('proj.trashTitle')}（{trash.length}）</h4>
             {trash.length > 0 && (
-              <Button variant="danger" size="sm" onClick={emptyAllTrash}>清空回收站</Button>
+              <Button variant="danger" size="sm" onClick={emptyAllTrash}>{t('proj.emptyTrash')}</Button>
             )}
           </div>
           {trash.length === 0 ? (
-            <p className="empty-inline">回收站为空</p>
+            <p className="empty-inline">{t('proj.trashEmpty')}</p>
           ) : (
             <ul className="trash-list">
               {trash.map((id) => (
                 <li key={id} className="trash-item">
                   <span className="trash-id">{id}</span>
-                  <Button variant="secondary" size="sm" onClick={() => restoreFromTrash(id)}>↩ 恢复</Button>
-                  <Button variant="ghost" size="sm" onClick={() => purgeFromTrash(id)}>✕ 彻底删除</Button>
+                  <Button variant="secondary" size="sm" onClick={() => restoreFromTrash(id)}>{t('proj.restore')}</Button>
+                  <Button variant="ghost" size="sm" onClick={() => purgeFromTrash(id)}>{t('proj.purge')}</Button>
                 </li>
               ))}
             </ul>
@@ -289,9 +291,9 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
       ) : filteredSorted.length === 0 ? (
         <EmptyState
           icon="📁"
-          title={search ? '无匹配项目' : '暂无项目'}
-          description={search ? '尝试更换搜索关键词' : '前往「开发」视图，输入需求即可一键创建项目并自动开发。'}
-          actions={!search ? [{ label: '去开发', onClick: onGoDevelop }] : undefined}
+          title={search ? t('proj.emptySearch') : t('proj.emptyTitle')}
+          description={search ? t('proj.emptySearchDesc') : t('proj.emptyDesc')}
+          actions={!search ? [{ label: t('proj.goDevelop'), onClick: onGoDevelop }] : undefined}
         />
       ) : (
         <>
@@ -305,8 +307,8 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
                       onKeyDown={(e) => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') setRenamingId(null); }}
                       autoFocus
                     />
-                    <IconButton label="确认" onClick={confirmRename}>✓</IconButton>
-                    <IconButton label="取消" onClick={() => setRenamingId(null)}>✕</IconButton>
+                    <IconButton label={t('btn.confirm')} onClick={confirmRename}>✓</IconButton>
+                    <IconButton label={t('btn.cancel')} onClick={() => setRenamingId(null)}>✕</IconButton>
                   </div>
                 ) : (
                   <span className="project-name" title={p.name}>{p.name}</span>
@@ -314,23 +316,23 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
                 <Badge tone={p.state === 'archived' ? 'success' : p.state === 'failed' ? 'danger' : 'info'}>{p.state}</Badge>
               </div>
               <div className="project-card-body">
-                <div className="project-field"><span>芯片</span><strong>{p.chip}</strong></div>
-                <div className="project-field"><span>端口</span><strong>{p.port ?? '-'}</strong></div>
-                <div className="project-field"><span>更新</span><strong>{p.updated_at}</strong></div>
+                <div className="project-field"><span>{t('proj.detailChip')}</span><strong>{p.chip}</strong></div>
+                <div className="project-field"><span>{t('proj.detailPort')}</span><strong>{p.port ?? '-'}</strong></div>
+                <div className="project-field"><span>{t('proj.detailUpdated')}</span><strong>{p.updated_at}</strong></div>
               </div>
               <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
-                <IconButton label="重命名" onClick={() => startRename(p)}>✏</IconButton>
+                <IconButton label={t('proj.iconRename')} onClick={() => startRename(p)}>✏</IconButton>
                 {/* #57 复制项目 */}
-                <IconButton label="复制" onClick={() => duplicateProject(p)}>📋</IconButton>
-                <IconButton label="导出" onClick={() => exportProject(p)}>📦</IconButton>
-                <IconButton label="删除" onClick={() => setConfirmDeleteId(p.id)}>🗑</IconButton>
+                <IconButton label={t('proj.iconDup')} onClick={() => duplicateProject(p)}>📋</IconButton>
+                <IconButton label={t('proj.iconExport')} onClick={() => exportProject(p)}>📦</IconButton>
+                <IconButton label={t('proj.iconDelete')} onClick={() => setConfirmDeleteId(p.id)}>🗑</IconButton>
               </div>
               {confirmDeleteId === p.id && (
                 <div className="confirm-dialog" role="alertdialog" onClick={(e) => e.stopPropagation()}>
-                  <span>确认删除？移入回收站可恢复</span>
+                  <span>{t('proj.confirmDeleteShort')}</span>
                   <div className="confirm-actions">
-                    <Button variant="danger" size="sm" onClick={confirmDelete}>删除</Button>
-                    <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>取消</Button>
+                    <Button variant="danger" size="sm" onClick={confirmDelete}>{t('proj.deleteShort')}</Button>
+                    <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>{t('btn.cancel')}</Button>
                   </div>
                 </div>
               )}
@@ -340,9 +342,9 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
         {/* #60 分页 */}
         {totalPages > 1 && (
           <div className="pagination">
-            <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>上一页</Button>
-            <span className="pagination-info">第 {page} / {totalPages} 页（共 {filteredSorted.length} 项）</span>
-            <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>下一页</Button>
+            <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>{t('proj.prevPage')}</Button>
+            <span className="pagination-info">{t('proj.pageInfo', { page, total: totalPages, n: filteredSorted.length })}</span>
+            <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>{t('proj.nextPage')}</Button>
           </div>
         )}
         </>

@@ -1,6 +1,6 @@
 // 文件路径：src/views/DevelopView.tsx
-// 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照/按钮内联阶段(#21)/多模型对比(#80)/多设备并行(#50)
-// 最后更新时间：2026-06-29-0130
+// 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照/按钮内联阶段(#21)/多模型对比(#80)/多设备并行(#50)/i18n
+// 最后更新时间：2026-06-29-0230
 
 import { useEffect, useState, type RefObject } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,20 +17,18 @@ import {
 import { RequirementExamples } from '../components/RequirementExamples';
 import { ChatMessage } from '../components/ChatMessage';
 import { checkCodeFormat, extractPinRefs, classifyPin } from '../utils/codeCheck';
+import { useI18n } from '../i18n';
 
-/// #21 流水线状态 → 按钮内联显示的阶段名
-const STATE_LABEL: Record<string, string> = {
-  coding: '正在生成代码…',
-  compiling: '正在编译…',
-  flashingconfirm: '等待确认烧录…',
-  flashing: '正在烧录…',
-  verifying: '正在验证…',
-  archived: '已完成',
-  failed: '已失败',
+/// #21 流水线状态 → i18n key 映射
+const STATE_LABEL_KEY: Record<string, string> = {
+  coding: 'state.coding',
+  compiling: 'state.compiling',
+  flashingconfirm: 'state.flashingconfirm',
+  flashing: 'state.flashing',
+  verifying: 'state.verifying',
+  archived: 'state.archived',
+  failed: 'state.failed',
 };
-function stageLabel(state: string): string {
-  return STATE_LABEL[state] || '运行中…';
-}
 
 /// 开发视图属性
 export interface DevelopViewProps {
@@ -90,6 +88,7 @@ export interface DevelopViewProps {
 type MessageTab = 'chat' | 'logs';
 
 export function DevelopView(props: DevelopViewProps) {
+  const { t } = useI18n();
   const {
     devices, selectedPort, selectedChip, chips, requirement, running, currentState,
     progress, generatedCode, llmConfigured, chatHistory, logs, outcome, logEndRef,
@@ -176,36 +175,36 @@ export function DevelopView(props: DevelopViewProps) {
     <div className="develop-view">
       {!llmConfigured && (
         <div className="config-warn" role="alert">
-          <span>⚠️ 尚未配置 LLM，无法进行 AI 开发。</span>
-          <Button variant="ghost" size="sm" onClick={onGoSettings}>前往设置 →</Button>
+          <span>{t('dev.llmNotConfigured')}</span>
+          <Button variant="ghost" size="sm" onClick={onGoSettings}>{t('dev.goSettings')}</Button>
         </div>
       )}
       <div className="control-panel ui-card">
         <div className="control-row">
-          <label>设备:</label>
+          <label>{t('dev.device')}</label>
           <select value={selectedPort} onChange={(e) => onPort(e.target.value)} disabled={running}>
-            <option value="">选择串口…</option>
+            <option value="">{t('dev.selectPort')}</option>
             {devices.map((d) => (
               <option key={d.port} value={d.port}>
                 {d.port} {d.chip ? `(${d.chip})` : ''} {d.detected ? '✓' : ''}
               </option>
             ))}
           </select>
-          <label>芯片:</label>
+          <label>{t('dev.chip')}</label>
           <select value={selectedChip} onChange={(e) => onChip(e.target.value)} disabled={running}>
             {chips.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <Button variant="secondary" size="sm" onClick={onRefreshDevices} disabled={running}>
-            刷新设备
+            {t('btn.refresh')}
           </Button>
         </div>
 
         <div className="requirement-box">
-          <label>描述你的需求（自然语言）:</label>
+          <label>{t('dev.requirement')}</label>
           <textarea
             value={requirement}
             onChange={(e) => onRequirement(e.target.value)}
-            placeholder="例如：GPIO2 接 LED，每 500ms 闪烁一次，串口输出闪烁状态"
+            placeholder={t('dev.reqPlaceholder')}
             rows={4}
             disabled={running}
           />
@@ -214,30 +213,30 @@ export function DevelopView(props: DevelopViewProps) {
           {/* #19 需求历史持久化：下拉选择历史需求 */}
           {!running && reqHistory.length > 0 && (
             <div className="req-history">
-              <span className="req-history-label">🕘 历史：</span>
+              <span className="req-history-label">{t('dev.history')}</span>
               <select
                 className="req-history-select"
                 value=""
                 onChange={(e) => { if (e.target.value) onRequirement(e.target.value); }}
               >
-                <option value="">选择历史需求…</option>
+                <option value="">{t('dev.selectHistory')}</option>
                 {reqHistory.map((r, i) => (
                   <option key={i} value={r}>{r.slice(0, 50)}{r.length > 50 ? '…' : ''}</option>
                 ))}
               </select>
-              <Button variant="ghost" size="sm" onClick={onClearReqHistory}>清空</Button>
+              <Button variant="ghost" size="sm" onClick={onClearReqHistory}>{t('btn.clear')}</Button>
             </div>
           )}
           <div className="btn-row">
             <Button variant="secondary" onClick={onChat} disabled={running || !requirement.trim()}>
-              与 AI 对话澄清
+              {t('btn.chat')}
             </Button>
             <Button variant="primary" onClick={onRun} disabled={running || !requirement.trim() || !selectedPort}>
               {/* #21 运行中按钮内联显示当前阶段名 */}
-              {running ? stageLabel(currentState) : '🚀 一键全自动开发'}
+              {running ? t(STATE_LABEL_KEY[currentState] ?? 'state.running') : t('btn.run')}
             </Button>
             {running && (
-              <Button variant="danger" onClick={onStop}>⏹ 终止</Button>
+              <Button variant="danger" onClick={onStop}>{t('btn.stop')}</Button>
             )}
           </div>
         </div>
@@ -249,14 +248,14 @@ export function DevelopView(props: DevelopViewProps) {
               <div className="flash-confirm-dialog" role="alertdialog" aria-label="烧录确认">
                 <div className="flash-confirm-icon" aria-hidden>⚠️</div>
                 <div className="flash-confirm-body">
-                  <div className="flash-confirm-title">即将烧录到设备</div>
+                  <div className="flash-confirm-title">{t('dev.flashConfirmTitle')}</div>
                   <div className="flash-confirm-desc">
-                    代码已编译完成，确认要烧录到 <strong>{selectedPort}</strong>（{selectedChip}）吗？
-                    <br />烧录期间请勿拔出设备。
+                    {t('dev.flashConfirmDesc', { port: selectedPort, chip: selectedChip })}
+                    <br />{t('dev.flashConfirmWarn')}
                   </div>
                   <div className="flash-confirm-actions">
-                    <Button variant="primary" onClick={() => onConfirmFlash?.()}>✓ 确认烧录</Button>
-                    <Button variant="danger" onClick={onStop}>✕ 取消</Button>
+                    <Button variant="primary" onClick={() => onConfirmFlash?.()}>{t('dev.confirmFlash')}</Button>
+                    <Button variant="danger" onClick={onStop}>{t('btn.cancel')}</Button>
                   </div>
                 </div>
               </div>
@@ -291,7 +290,7 @@ export function DevelopView(props: DevelopViewProps) {
             {/* #28 LLM 耗时统计 */}
             {llmStats && (
               <div className="llm-stats">
-                <Badge tone="info">AI 生成耗时 {(llmStats.durationMs / 1000).toFixed(1)}s</Badge>
+                <Badge tone="info">{t('dev.aiDuration')} {(llmStats.durationMs / 1000).toFixed(1)}s</Badge>
                 {llmStats.tokens && <Badge tone="default">tokens {llmStats.tokens}</Badge>}
               </div>
             )}
@@ -301,7 +300,7 @@ export function DevelopView(props: DevelopViewProps) {
         {/* #23 失败后下一步指引 */}
         {failureGuidance && (
           <div className="failure-guidance" role="alert">
-            <div className="failure-guidance-title">💡 下一步建议</div>
+            <div className="failure-guidance-title">{t('dev.failureGuidance')}</div>
             <ul>
               {failureGuidance.map((g, i) => <li key={i}>{g}</li>)}
             </ul>
@@ -311,7 +310,7 @@ export function DevelopView(props: DevelopViewProps) {
         {generatedCode && (
           <div className="code-section">
             <h4>
-              AI 生成的代码
+              {t('dev.generatedCode')}
               {generatedCode.explanation && <span className="code-explain">— {generatedCode.explanation}</span>}
             </h4>
             {/* #16 代码语法高亮 + #17 可编辑重跑 + #81 编辑器 */}
@@ -322,36 +321,36 @@ export function DevelopView(props: DevelopViewProps) {
                   onChange={setEditedCode}
                   language="arduino"
                   minHeight="320px"
-                  placeholder="可在此编辑代码后重跑（跳过 AI 生成）"
+                  placeholder={t('dev.editorPlaceholder')}
                 />
                 <div className="code-edit-actions">
                   <Button variant="primary" size="sm" onClick={() => onRerunEdited(editedCode)} disabled={running}>
-                    🔄 用编辑后的代码重跑
+                    {t('dev.rerunEdited')}
                   </Button>
                   {/* #83 diff 对比 */}
                   {lastFixedCode && (
                     <Button variant="secondary" size="sm" onClick={() => setShowDiff((v) => !v)}>
-                      {showDiff ? '隐藏' : '查看'} diff
+                      {showDiff ? t('dev.hideDiff') : t('dev.viewDiff')}{t('dev.diffLabel')}
                     </Button>
                   )}
                   {/* #84 格式检查 */}
                   <Button variant="secondary" size="sm" onClick={() => setShowCheck((v) => !v)}>
-                    {showCheck ? '隐藏' : '🔍'} 检查 ({formatIssues.length})
+                    {showCheck ? t('dev.hideDiff') : t('dev.checkShowHide')} {t('dev.check')} ({formatIssues.length})
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setEditedCode(generatedCode.main_ino); }}>
-                    取消编辑
+                    {t('dev.cancelEdit')}
                   </Button>
                 </div>
                 {/* #84 格式化检查结果 */}
                 {showCheck && (
                   <div className="code-check-panel">
                     {formatIssues.length === 0 ? (
-                      <div className="check-ok">✓ 未发现明显格式问题</div>
+                      <div className="check-ok">{t('dev.checkOk')}</div>
                     ) : (
                       <ul className="check-issues">
                         {formatIssues.map((iss, i) => (
                           <li key={i} className={`check-issue check-${iss.severity}`}>
-                            <span className="check-loc">第{iss.line}行</span>
+                            <span className="check-loc">{t('dev.lineN', { line: iss.line })}</span>
                             <span className="check-msg">{iss.message}</span>
                           </li>
                         ))}
@@ -360,13 +359,13 @@ export function DevelopView(props: DevelopViewProps) {
                     {/* #82 引脚高亮悬浮：列出有风险的引脚引用 */}
                     {riskyPins.length > 0 && (
                       <div className="pin-refs-warn">
-                        <div className="pin-refs-title">⚠ 引脚黑名单提示：</div>
+                        <div className="pin-refs-title">{t('dev.pinWarnTitle')}</div>
                         {riskyPins.map((r, i) => {
                           const cls = classifyPin(r.pin, blacklist);
                           return (
                             <div key={i} className={`pin-ref pin-ref-${cls}`} title={r.context}>
-                              第{r.line}行 GPIO{r.pin}
-                              <span className="pin-ref-tag">{cls === 'error' ? '禁止' : '警告'}</span>
+                              {t('dev.pinLine', { line: r.line, pin: r.pin })}
+                              <span className="pin-ref-tag">{cls === 'error' ? t('dev.pinError') : t('dev.pinWarn')}</span>
                             </div>
                           );
                         })}
@@ -376,7 +375,7 @@ export function DevelopView(props: DevelopViewProps) {
                 )}
                 {/* #83 AI 修复前后 diff */}
                 {showDiff && lastFixedCode && (
-                  <CodeDiff oldCode={lastFixedCode} newCode={editedCode} title="AI 修复前 → 编辑后" />
+                  <CodeDiff oldCode={lastFixedCode} newCode={editedCode} title={t('dev.diffTitle')} />
                 )}
               </div>
             ) : (
@@ -385,10 +384,10 @@ export function DevelopView(props: DevelopViewProps) {
                 <div className="code-edit-actions">
                   {/* #17 进入编辑模式 */}
                   <Button variant="secondary" size="sm" onClick={() => { setEditing(true); setEditedCode(generatedCode.main_ino); }} disabled={running}>
-                    ✏ 编辑代码
+                    {t('dev.editCode')}
                   </Button>
                   {/* #86 代码导出 */}
-                  <Button variant="ghost" size="sm" onClick={() => onExportCode(generatedCode.main_ino)}>📥 导出 .ino</Button>
+                  <Button variant="ghost" size="sm" onClick={() => onExportCode(generatedCode.main_ino)}>{t('dev.exportIno')}</Button>
                 </div>
               </>
             )}
@@ -398,26 +397,26 @@ export function DevelopView(props: DevelopViewProps) {
         {/* #80 多模型对比 */}
         <div className="compare-section">
           <div className="compare-header">
-            <h4>🔄 多模型对比</h4>
+            <h4>{t('dev.compareTitle')}</h4>
             <input
               value={compareModel}
               onChange={(e) => setCompareModel(e.target.value)}
-              placeholder="对比模型名，如 glm-4-plus / deepseek-chat"
+              placeholder={t('dev.comparePlaceholder')}
               disabled={comparing || !requirement.trim()}
             />
             <Button variant="secondary" size="sm" onClick={runCompare} loading={comparing} disabled={!requirement.trim() || !compareModel.trim()}>
-              对比生成
+              {t('dev.compareBtn')}
             </Button>
           </div>
           {compareResult && (
             <div className="compare-grid">
               <div className="compare-col">
-                <div className="compare-col-title">当前模型</div>
+                <div className="compare-col-title">{t('dev.currentModel')}</div>
                 <CodeBlock code={compareResult.current} language="arduino" maxHeight="280px" title="current" />
               </div>
               <div className="compare-col">
                 <div className="compare-col-title">{compareResult.otherModel}</div>
-                <CodeBlock code={compareResult.other || '（生成失败或为空）'} language="arduino" maxHeight="280px" title={compareResult.otherModel} />
+                <CodeBlock code={compareResult.other || t('dev.compareEmpty')} language="arduino" maxHeight="280px" title={compareResult.otherModel} />
               </div>
             </div>
           )}
@@ -425,21 +424,21 @@ export function DevelopView(props: DevelopViewProps) {
 
         {/* #50 多设备并行任务 */}
         <div className="parallel-section">
-          <h4>⚡ 多设备并行任务</h4>
-          <p className="hint">为不同设备并行运行不同需求的流水线，各自独立跟踪进度，不影响当前焦点任务。</p>
+          <h4>{t('dev.parallelTitle')}</h4>
+          <p className="hint">{t('dev.parallelHint')}</p>
           <div className="parallel-input-row">
             <select value={parallelPort} onChange={(e) => setParallelPort(e.target.value)} disabled={running}>
-              <option value="">选择端口…</option>
+              <option value="">{t('dev.parallelSelectPort')}</option>
               {devices.map((d) => <option key={d.port} value={d.port}>{d.port}{d.chip ? ` (${d.chip})` : ''}</option>)}
             </select>
             <input
               value={parallelReq}
               onChange={(e) => setParallelReq(e.target.value)}
-              placeholder="该设备的开发需求"
+              placeholder={t('dev.parallelReqPlaceholder')}
               disabled={running}
             />
             <Button variant="secondary" size="sm" onClick={() => { onLaunchParallel(parallelPort, selectedChip, parallelReq); setParallelReq(''); }} disabled={running || !parallelPort || !parallelReq.trim()}>
-              ➕ 启动并行任务
+              {t('dev.parallelStart')}
             </Button>
           </div>
           {parallelTasks.length > 0 && (
@@ -471,19 +470,19 @@ export function DevelopView(props: DevelopViewProps) {
             className={`msg-tab ${msgTab === 'chat' ? 'active' : ''}`}
             onClick={() => setMsgTab('chat')}
           >
-            对话 ({chatHistory.length})
+            {t('dev.tabChat')} ({chatHistory.length})
           </button>
           <button
             className={`msg-tab ${msgTab === 'logs' ? 'active' : ''}`}
             onClick={() => setMsgTab('logs')}
           >
-            过程日志 ({logs.length})
+            {t('dev.tabLogs')} ({logs.length})
           </button>
         </div>
         <div className="messages">
           {msgTab === 'chat' ? (
             chatHistory.length === 0 ? (
-              <div className="empty-inline">暂无对话，点击「与 AI 对话澄清」开始</div>
+              <div className="empty-inline">{t('dev.noChat')}</div>
             ) : (
               // #76 Markdown 渲染 + #77 复制/重新生成
               chatHistory.map((m, i) => (
@@ -500,7 +499,7 @@ export function DevelopView(props: DevelopViewProps) {
                   {outcome.success ? '✅' : '❌'} {outcome.summary}
                   {outcome.verdict && (
                     <Badge tone={outcome.success ? 'success' : 'danger'} className="verdict-badge">
-                      判定: {outcome.verdict.verdict} | 匹配: {outcome.verdict.matched_cases.join(',')}
+                      {t('dev.verdict')}: {outcome.verdict.verdict} | {t('dev.matched')}: {outcome.verdict.matched_cases.join(',')}
                     </Badge>
                   )}
                 </div>

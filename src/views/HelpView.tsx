@@ -1,12 +1,13 @@
 // 文件路径：src/views/HelpView.tsx
-// 文件作用：帮助视图——首次启动向导 + 内置帮助/FAQ + 示例库浏览套用 + 反馈表单(#99)
-// 最后更新时间：2026-06-29-0130
+// 文件作用：帮助视图——首次启动向导 + 内置帮助/FAQ + 示例库浏览套用 + 反馈表单(#99) + i18n
+// 最后更新时间：2026-06-29-0230
 
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button, Card, Badge } from '../components/ui';
 import { CodeBlock } from '../components/CodeBlock';
 import { useNotifications } from '../components/notifications';
+import { useI18n } from '../i18n';
 import './HelpView.css';
 
 /// 示例信息
@@ -25,18 +26,19 @@ interface HelpViewProps {
   onCloseWizard?: () => void;
 }
 
-/// FAQ 条目
-const FAQ: { q: string; a: string }[] = [
-  { q: '如何开始第一次开发？', a: '1) 在「设置」配置 LLM（API Key/Base URL/模型）；2) 在「设备」连接 ESP32；3) 在「开发」输入需求点「一键全自动开发」即可。' },
-  { q: '支持哪些芯片？', a: '当前支持 ESP32-S3 与 ESP32-C3。可在设置页查看引脚黑名单可视化图。' },
-  { q: '设备识别不到怎么办？', a: '常见原因：①USB 数据线不支持数据传输；②CH343/CP210x 驱动未安装（设备页有驱动检测）；③端口被其他串口工具占用。' },
-  { q: 'AI 生成代码失败？', a: '检查 LLM 配置（设置页可「测试连接」）；推理模型 max_tokens 建议 ≥ 8192；网络需能访问 LLM 服务。' },
-  { q: '如何手动编辑代码后重跑？', a: '代码生成后点「编辑代码」修改，再点「用编辑后的代码重跑」可跳过 AI 生成直接编译烧录。' },
-  { q: '快捷键有哪些？', a: 'Ctrl+1~5 切换视图（开发/设备/项目/监控/设置）；运行中按 Esc 终止流水线。' },
+/// FAQ 条目（使用 i18n key 引用，渲染时通过 t() 取本地化文本）
+const FAQ_KEYS: { qKey: string; aKey: string }[] = [
+  { qKey: 'faq.q1', aKey: 'faq.a1' },
+  { qKey: 'faq.q2', aKey: 'faq.a2' },
+  { qKey: 'faq.q3', aKey: 'faq.a3' },
+  { qKey: 'faq.q4', aKey: 'faq.a4' },
+  { qKey: 'faq.q5', aKey: 'faq.a5' },
+  { qKey: 'faq.q6', aKey: 'faq.a6' },
 ];
 
 export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps) {
   const notify = useNotifications();
+  const { t } = useI18n();
   const [examples, setExamples] = useState<ExampleInfo[]>([]);
   const [selectedExample, setSelectedExample] = useState<ExampleInfo | null>(null);
   const [tab, setTab] = useState<'guide' | 'examples' | 'faq' | 'feedback'>(wizard ? 'guide' : 'examples');
@@ -52,47 +54,47 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
     <div className="help-view">
       {wizard && (
         <div className="wizard-banner">
-          <span>👋 欢迎使用 Talk2ESP！首次使用建议完成以下准备：</span>
-          <Button variant="ghost" size="sm" onClick={onCloseWizard}>跳过</Button>
+          <span>{t('help.welcome')}</span>
+          <Button variant="ghost" size="sm" onClick={onCloseWizard}>{t('help.skip')}</Button>
         </div>
       )}
 
       <div className="help-tabs">
-        <button className={`help-tab ${tab === 'guide' ? 'active' : ''}`} onClick={() => setTab('guide')}>📖 快速上手</button>
-        <button className={`help-tab ${tab === 'examples' ? 'active' : ''}`} onClick={() => setTab('examples')}>🧪 示例库</button>
-        <button className={`help-tab ${tab === 'faq' ? 'active' : ''}`} onClick={() => setTab('faq')}>❓ 常见问题</button>
-        <button className={`help-tab ${tab === 'feedback' ? 'active' : ''}`} onClick={() => setTab('feedback')}>💬 反馈</button>
+        <button className={`help-tab ${tab === 'guide' ? 'active' : ''}`} onClick={() => setTab('guide')}>{t('help.tabGuide')}</button>
+        <button className={`help-tab ${tab === 'examples' ? 'active' : ''}`} onClick={() => setTab('examples')}>{t('help.tabExamples')}</button>
+        <button className={`help-tab ${tab === 'faq' ? 'active' : ''}`} onClick={() => setTab('faq')}>{t('help.tabFaq')}</button>
+        <button className={`help-tab ${tab === 'feedback' ? 'active' : ''}`} onClick={() => setTab('feedback')}>{t('help.tabFeedback')}</button>
       </div>
 
       {tab === 'guide' && (
         <Card className="help-section">
-          <h3>快速上手三步</h3>
+          <h3>{t('help.guideTitle')}</h3>
           <ol className="guide-steps">
             <li>
-              <strong>配置 LLM</strong>
-              <p>前往「设置」页，选择供应商预设（火山/智谱/DeepSeek 等），填入 API Key，点「测试连接」确认可用。</p>
+              <strong>{t('help.step1')}</strong>
+              <p>{t('help.step1Desc')}</p>
             </li>
             <li>
-              <strong>连接设备</strong>
-              <p>前往「设备」页，连接 ESP32 开发板后刷新，点「测试连接」确认；选为开发设备。</p>
+              <strong>{t('help.step2')}</strong>
+              <p>{t('help.step2Desc')}</p>
             </li>
             <li>
-              <strong>一键开发</strong>
-              <p>前往「开发」页，用自然语言描述需求（或点快捷示例），点「🚀 一键全自动开发」，等待 AI 生成→编译→烧录→验证。</p>
+              <strong>{t('help.step3')}</strong>
+              <p>{t('help.step3Desc')}</p>
             </li>
           </ol>
           {/* #99 反馈入口 */}
           <div className="feedback-entry">
-            <span>遇到问题或有建议？</span>
-            <Button variant="secondary" size="sm" onClick={() => setTab('feedback')}>💬 填写反馈</Button>
+            <span>{t('help.feedbackEntry')}</span>
+            <Button variant="secondary" size="sm" onClick={() => setTab('feedback')}>{t('help.feedbackBtn')}</Button>
           </div>
         </Card>
       )}
 
       {tab === 'examples' && (
         <Card className="help-section">
-          <h3>内置示例库（{examples.length}）</h3>
-          <p className="help-desc">点击查看示例代码，可套用到开发视图作为起点。</p>
+          <h3>{t('help.examplesTitle')}（{examples.length}）</h3>
+          <p className="help-desc">{t('help.examplesDesc')}</p>
           <div className="examples-grid">
             {examples.map((ex) => (
               <div
@@ -111,8 +113,8 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
                 <h4>{selectedExample.name}</h4>
                 <div className="example-actions">
                   {onUseExample && (
-                    <Button variant="primary" size="sm" onClick={() => { onUseExample(selectedExample.code, selectedExample.name); notify.success('已套用示例', selectedExample.name); }}>
-                      套用到开发
+                    <Button variant="primary" size="sm" onClick={() => { onUseExample(selectedExample.code, selectedExample.name); notify.success(t('help.exampleApplied'), selectedExample.name); }}>
+                      {t('help.applyExample')}
                     </Button>
                   )}
                   <Badge tone="info">Arduino</Badge>
@@ -126,12 +128,12 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
 
       {tab === 'faq' && (
         <Card className="help-section">
-          <h3>常见问题</h3>
+          <h3>{t('help.faqTitle')}</h3>
           <div className="faq-list">
-            {FAQ.map((item, i) => (
+            {FAQ_KEYS.map((item, i) => (
               <details key={i} className="faq-item">
-                <summary className="faq-q">{item.q}</summary>
-                <p className="faq-a">{item.a}</p>
+                <summary className="faq-q">{t(item.qKey)}</summary>
+                <p className="faq-a">{t(item.aKey)}</p>
               </details>
             ))}
           </div>
@@ -141,24 +143,24 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
       {/* #99 反馈表单 */}
       {tab === 'feedback' && (
         <Card className="help-section">
-          <h3>问题反馈 / 功能建议</h3>
-          <p className="help-desc">填写反馈类型与描述，生成预填内容的 GitHub Issue 链接，或复制文本自行提交。</p>
+          <h3>{t('help.feedbackTitle')}</h3>
+          <p className="help-desc">{t('help.feedbackDesc')}</p>
           <div className="feedback-form">
             <div className="feedback-row">
-              <label>反馈类型</label>
+              <label>{t('help.fbType')}</label>
               <select value={fbType} onChange={(e) => setFbType(e.target.value)}>
-                <option value="bug">🐛 Bug 报告</option>
-                <option value="feature">✨ 功能建议</option>
-                <option value="question">❓ 使用疑问</option>
-                <option value="other">📝 其他</option>
+                <option value="bug">{t('help.fbBug')}</option>
+                <option value="feature">{t('help.fbFeature')}</option>
+                <option value="question">{t('help.fbQuestion')}</option>
+                <option value="other">{t('help.fbOther')}</option>
               </select>
             </div>
             <div className="feedback-row">
-              <label>详细描述</label>
+              <label>{t('help.fbDesc')}</label>
               <textarea
                 value={fbText}
                 onChange={(e) => setFbText(e.target.value)}
-                placeholder="请描述遇到的问题或期望的功能，包括操作步骤、预期与实际现象、设备型号等"
+                placeholder={t('help.fbPlaceholder')}
                 rows={6}
               />
             </div>
@@ -168,15 +170,21 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
                 size="sm"
                 disabled={!fbText.trim()}
                 onClick={() => {
-                  const typeLabel = { bug: 'Bug报告', feature: '功能建议', question: '使用疑问', other: '其他' }[fbType] || '反馈';
+                  const typeLabelMap: Record<string, string> = {
+                    bug: t('help.fbLabelBug'),
+                    feature: t('help.fbLabelFeature'),
+                    question: t('help.fbLabelQuestion'),
+                    other: t('help.fbLabelOther'),
+                  };
+                  const typeLabel = typeLabelMap[fbType] || t('help.fbDefaultLabel');
                   const title = encodeURIComponent(`[${typeLabel}] ${fbText.slice(0, 40)}`);
-                  const body = encodeURIComponent(`## 反馈类型\n${typeLabel}\n\n## 详细描述\n${fbText}\n\n## 环境\n- 应用: Talk2ESP\n- 提交时间: ${new Date().toLocaleString('zh-CN')}\n`);
+                  const body = encodeURIComponent(`## ${t('help.fbType')}\n${typeLabel}\n\n## ${t('help.fbDesc')}\n${fbText}\n\n## Env\n- App: Talk2ESP\n- Time: ${new Date().toLocaleString()}\n`);
                   const url = `https://github.com/Wukaixiong/Talk2ESP/issues/new?title=${title}&body=${body}`;
                   window.open(url, '_blank');
-                  notify.success('已打开 GitHub Issue', '请在浏览器完成提交');
+                  notify.success(t('help.fbIssueOpened'), t('help.fbIssueOpenedDesc'));
                 }}
               >
-                🔗 生成 GitHub Issue
+                {t('help.fbGenIssue')}
               </Button>
               <Button
                 variant="secondary"
@@ -185,12 +193,12 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
                 onClick={() => {
                   const text = `【${fbType}】\n${fbText}`;
                   navigator.clipboard?.writeText(text).then(
-                    () => notify.success('已复制', '反馈内容已复制到剪贴板'),
-                    () => notify.error('复制失败', '请手动选择文本复制'),
+                    () => notify.success(t('help.fbCopied'), t('help.fbCopiedDesc')),
+                    () => notify.error(t('help.fbCopyFailed'), t('help.fbCopyFailedDesc')),
                   );
                 }}
               >
-                📋 复制文本
+                {t('help.fbCopy')}
               </Button>
             </div>
           </div>

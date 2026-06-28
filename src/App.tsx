@@ -82,16 +82,16 @@ function AppInner() {
     invoke<string[]>('list_chips').then(setChips).catch(() => {});
     invoke<boolean>('is_llm_configured').then(setLlmConfigured).catch(() => {});
     invoke<string>('get_app_version').then(setAppVersion).catch(() => {});
-    // #94 启动后检查远程更新（静默，有更新才提示）
-    invoke<[boolean, string, string]>('check_for_update')
-      .then(([hasUpdate, latest, url]) => {
-        if (hasUpdate) {
+    // #94 启动后检查远程更新（静默，有更新才提示），并提供一键更新入口
+    invoke<{ has_update: boolean; latest: string; current: string; release_url: string; asset_url: string }>('check_for_update')
+      .then((info) => {
+        if (info.has_update) {
+          const isEn = t('nav.develop') === 'Develop';
           notify.info(
-            lang === 'zh' ? '发现新版本' : 'New version available',
-            lang === 'zh' ? `最新版本 ${latest}，点击前往下载` : `Latest ${latest}, click to download`,
+            isEn ? 'New version available' : '发现新版本',
+            isEn ? `Latest ${info.latest}. Open Help → Feedback or click the version badge to update.` : `最新版本 ${info.latest}，可在「帮助」反馈页或点击版本号一键更新`,
           );
-          // 记录到 localStorage 供设置页展示
-          localStorage.setItem('talk2esp-update', JSON.stringify({ latest, url }));
+          localStorage.setItem('talk2esp-update', JSON.stringify(info));
         } else {
           localStorage.removeItem('talk2esp-update');
         }
@@ -521,12 +521,47 @@ function AppInner() {
             ) : (
               <span className="header-info" title="LLM 未配置"><StatusDot state="error" label="未配置" /></span>
             )}
-            <span className="header-version">v{appVersion}</span>
+            {/* #94 一键更新：点击版本号检查并下载安装最新版 */}
+            <button
+              className="header-version"
+              title={t('lang.toggleTitle') === 'Switch to Chinese' ? '检查更新' : 'Check for updates'}
+              onClick={async () => {
+                const isEn = t('nav.develop') === 'Develop';
+                try {
+                  const info = await invoke<{ has_update: boolean; latest: string; current: string; release_url: string; asset_url: string }>('check_for_update');
+                  if (!info.has_update) {
+                    notify.info(isEn ? 'Up to date' : '已是最新版本', isEn ? `v${info.current}` : `当前版本 v${info.current}`);
+                    return;
+                  }
+                  // 询问用户是否一键下载安装；asset_url 存在则可一键，否则打开 release 页
+                  const ok = confirm(isEn
+                    ? `New version v${info.latest} available. Download and install now?`
+                    : `发现新版本 v${info.latest}，是否立即下载并安装？`);
+                  if (!ok) return;
+                  if (info.asset_url) {
+                    notify.info(isEn ? 'Downloading…' : '正在下载…', isEn ? 'Installer will launch when ready' : '下载完成后会自动启动安装程序');
+                    try {
+                      const local = await invoke<string>('apply_update', { assetUrl: info.asset_url });
+                      notify.success(isEn ? 'Installer launched' : '已启动安装程序', local);
+                    } catch (e) {
+                      notify.error(isEn ? 'Update failed' : '更新失败', String(e));
+                      // 失败时打开 release 页让用户手动下载
+                      window.open(info.release_url, '_blank');
+                    }
+                  } else if (info.release_url) {
+                    window.open(info.release_url, '_blank');
+                    notify.info(isEn ? 'Opened release page' : '已打开发布页', isEn ? 'Please download manually' : '请手动下载安装');
+                  }
+                } catch (e) {
+                  notify.error(isEn ? 'Check failed' : '检查更新失败', String(e));
+                }
+              }}
+            >v{appVersion}</button>
             {running && <Badge tone="info" className="header-running">{t('state.running')} {progress.percent}%</Badge>}
             {/* #93 语言切换 */}
             <button
               className="lang-toggle"
-              title={lang === 'zh' ? '切换到英文' : 'Switch to Chinese'}
+              title={t('lang.toggleTitle')}
               onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
             >
               {lang === 'zh' ? 'EN' : '中'}
@@ -549,7 +584,7 @@ function AppInner() {
             <button className={view === 'monitor' ? 'active' : ''} onClick={() => setView('monitor')}>{t('nav.monitor')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
             <button className={view === 'help' ? 'active' : ''} onClick={() => setView('help')}>{t('nav.help')}</button>
-            {!llmConfigured && <span className="nav-warn">⚠️ {lang === 'zh' ? '未配置 LLM' : 'LLM not configured'}</span>}
+            {!llmConfigured && <span className="nav-warn">{t('nav.warnNoLlm')}</span>}
           </nav>
 
           <main className="main">

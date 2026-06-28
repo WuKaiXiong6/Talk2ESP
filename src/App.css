@@ -39,7 +39,14 @@
   font-size: var(--font-size-sm);
   opacity: 0.8;
   font-family: var(--font-mono);
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
 }
+.header-version:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); opacity: 1; }
 .header-running { animation: header-pulse 1.5s ease-in-out infinite; }
 @keyframes header-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 /* #93 语言切换按钮 */

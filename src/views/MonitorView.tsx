@@ -1,11 +1,12 @@
 // 文件路径：src/views/MonitorView.tsx
-// 文件作用：串口监控视图——多标签(#38) + 输出时间戳/着色/搜索/暂停/清空/导出 + 波特率预设+探测 + 发送区增强(#36十六进制/换行/定时) + 数据图表(#39)
-// 最后更新时间：2026-06-29-0130
+// 文件作用：串口监控视图——多标签(#38) + 输出时间戳/着色/搜索/暂停/清空/导出 + 波特率预设+探测 + 发送区增强(#36十六进制/换行/定时) + 数据图表(#39) + i18n
+// 最后更新时间：2026-06-29-0230
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { Button, Badge, IconButton } from '../components/ui';
 import { useNotifications } from '../components/notifications';
+import { useI18n } from '../i18n';
 import './MonitorView.css';
 
 /// 单行串口输出（含时间戳与来源）
@@ -99,6 +100,7 @@ function makeTab(port: string): MonitorTab {
 
 export function MonitorView() {
   const notify = useNotifications();
+  const { t: tr } = useI18n();
   // #38 多标签：标签列表 + 当前激活标签 id
   const [tabs, setTabs] = useState<MonitorTab[]>([makeTab('')]);
   const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
@@ -343,61 +345,61 @@ export function MonitorView() {
             className={`monitor-tab ${t.id === activeTabId ? 'active' : ''}`}
             onClick={() => setActiveTabId(t.id)}
           >
-            <span className="monitor-tab-name">{t.port || '新标签'}</span>
+            <span className="monitor-tab-name">{t.port || tr('mon.newTab')}</span>
             {t.active && <span className="monitor-tab-dot" />}
             <button
               className="monitor-tab-close"
-              title="关闭标签"
+              title={tr('mon.closeTab')}
               onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
             >×</button>
           </div>
         ))}
-        <button className="monitor-tab-add" title="新增标签页" onClick={addTab}>＋</button>
+        <button className="monitor-tab-add" title={tr('mon.newTab')} onClick={addTab}>＋</button>
       </div>
 
       <div className="monitor-controls ui-card">
         <div className="control-row">
-          <label>端口:</label>
+          <label>{tr('mon.port')}</label>
           <input value={activeTab.port} onChange={(e) => updateActiveTab({ port: e.target.value })} placeholder="COM4" disabled={activeTab.active} />
-          <label>波特率:</label>
+          <label>{tr('mon.baud')}</label>
           <select value={activeTab.baud} onChange={(e) => updateActiveTab({ baud: +e.target.value })} disabled={activeTab.active}>
             {BAUD_PRESETS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
           {/* #35 自动探测波特率 */}
           <Button variant="ghost" size="sm" onClick={detectBaud} loading={detecting} disabled={activeTab.active}>
-            🔍 探测
+            {tr('mon.detect')}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => updateActiveTab({ showAdvanced: !activeTab.showAdvanced })} disabled={activeTab.active}>
-            {activeTab.showAdvanced ? '收起高级' : '高级参数'}
+            {activeTab.showAdvanced ? tr('mon.advancedCollapse') : tr('mon.advanced')}
           </Button>
           {!activeTab.active ? (
-            <Button variant="primary" size="sm" onClick={start}>打开监控</Button>
+            <Button variant="primary" size="sm" onClick={start}>{tr('mon.open')}</Button>
           ) : (
-            <Button variant="danger" size="sm" onClick={stop}>关闭监控</Button>
+            <Button variant="danger" size="sm" onClick={stop}>{tr('mon.close')}</Button>
           )}
           {/* #37 状态实时显示 */}
-          {activeTab.active ? <Badge tone="success">● 监控中</Badge> : <Badge tone="default">○ 已停止</Badge>}
+          {activeTab.active ? <Badge tone="success">{tr('mon.monitoring')}</Badge> : <Badge tone="default">{tr('mon.stopped')}</Badge>}
         </div>
 
         {/* #40 完整串口参数 */}
         {activeTab.showAdvanced && (
           <div className="control-row advanced-params">
-            <label>数据位:</label>
+            <label>{tr('mon.dataBits')}</label>
             <select value={activeTab.dataBits} onChange={(e) => updateActiveTab({ dataBits: +e.target.value })} disabled={activeTab.active}>
               {DATA_BITS.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
-            <label>校验位:</label>
+            <label>{tr('mon.parity')}</label>
             <select value={activeTab.parity} onChange={(e) => updateActiveTab({ parity: e.target.value })} disabled={activeTab.active}>
               {PARITY.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
-            <label>停止位:</label>
+            <label>{tr('mon.stopBits')}</label>
             <select value={activeTab.stopBits} onChange={(e) => updateActiveTab({ stopBits: e.target.value })} disabled={activeTab.active}>
               {STOP_BITS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
             {/* #39 数据图表开关 */}
-            <label>数值图表:</label>
+            <label>{tr('mon.chart')}</label>
             <input type="checkbox" checked={activeTab.chartEnabled} onChange={(e) => updateActiveTab({ chartEnabled: e.target.checked })} />
-            <span className="hint">自动从输出解析数值绘制折线</span>
+            <span className="hint">{tr('mon.chartHint')}</span>
           </div>
         )}
       </div>
@@ -408,31 +410,31 @@ export function MonitorView() {
           className="monitor-search"
           value={activeTab.search}
           onChange={(e) => updateActiveTab({ search: e.target.value })}
-          placeholder="🔍 搜索过滤输出…"
+          placeholder={tr('mon.searchPlaceholder')}
         />
         <div className="monitor-toolbar-actions">
-          <IconButton label={activeTab.autoScroll ? '关闭自动滚动' : '开启自动滚动'} onClick={() => updateActiveTab({ autoScroll: !activeTab.autoScroll })}>
+          <IconButton label={activeTab.autoScroll ? tr('mon.autoScrollOff') : tr('mon.autoScrollOn')} onClick={() => updateActiveTab({ autoScroll: !activeTab.autoScroll })}>
             {activeTab.autoScroll ? '⤓' : '⤒'}
           </IconButton>
           <Button variant={activeTab.paused ? 'primary' : 'secondary'} size="sm" onClick={togglePause}>
-            {activeTab.paused ? '▶ 继续' : '⏸ 暂停'}
+            {activeTab.paused ? tr('mon.resume') : tr('mon.pause')}
           </Button>
-          <Button variant="secondary" size="sm" onClick={clear}>🗑 清空</Button>
-          <Button variant="secondary" size="sm" onClick={exportTxt} disabled={activeTab.lines.length === 0}>📄 导出TXT</Button>
-          <Button variant="secondary" size="sm" onClick={exportCsv} disabled={activeTab.lines.length === 0}>📊 导出CSV</Button>
+          <Button variant="secondary" size="sm" onClick={clear}>{tr('mon.clear')}</Button>
+          <Button variant="secondary" size="sm" onClick={exportTxt} disabled={activeTab.lines.length === 0}>{tr('mon.exportTxt')}</Button>
+          <Button variant="secondary" size="sm" onClick={exportCsv} disabled={activeTab.lines.length === 0}>{tr('mon.exportCsv')}</Button>
         </div>
       </div>
 
       {/* #39 数据图表 */}
       {activeTab.chartEnabled && activeTab.chartPoints.length > 1 && (
         <div className="serial-chart ui-card">
-          <SerialChart points={activeTab.chartPoints} />
+          <SerialChart points={activeTab.chartPoints} title={tr('mon.chartTitle', { n: activeTab.chartPoints.length })} />
         </div>
       )}
 
       <div className="serial-output">
         {filteredLines.length === 0 ? (
-          <div className="serial-empty">{activeTab.active ? '等待数据…' : '打开监控后此处显示串口输出'}</div>
+          <div className="serial-empty">{activeTab.active ? tr('mon.waiting') : tr('mon.openHint')}</div>
         ) : (
           filteredLines.map((l) => (
             <div key={l.id} className={`serial-line ${l.raw ? 'serial-raw' : ''}`}>
@@ -452,25 +454,25 @@ export function MonitorView() {
           <input
             value={activeTab.sendText}
             onChange={(e) => updateActiveTab({ sendText: e.target.value })}
-            placeholder={activeTab.hexMode ? '十六进制，如 48 65 6C 6C 6F' : '输入要发送的数据，回车发送'}
+            placeholder={activeTab.hexMode ? tr('mon.sendPlaceholderHex') : tr('mon.sendPlaceholder')}
             onKeyDown={(e) => e.key === 'Enter' && doSend(false)}
             disabled={!activeTab.active}
           />
-          <Button variant="secondary" size="sm" onClick={() => doSend(false)} disabled={!activeTab.active || !activeTab.sendText.trim()}>发送</Button>
+          <Button variant="secondary" size="sm" onClick={() => doSend(false)} disabled={!activeTab.active || !activeTab.sendText.trim()}>{tr('mon.send')}</Button>
           {/* #36 十六进制模式 */}
-          <label className="send-option" title="十六进制发送">
+          <label className="send-option" title={tr('mon.sendPlaceholderHex')}>
             <input type="checkbox" checked={activeTab.hexMode} onChange={(e) => updateActiveTab({ hexMode: e.target.checked })} disabled={!activeTab.active} />
             HEX
           </label>
           {/* #36 换行符选择 */}
-          <select className="send-line-ending" value={activeTab.lineEnding} onChange={(e) => updateActiveTab({ lineEnding: e.target.value as 'none' | 'lf' | 'crlf' })} disabled={!activeTab.active} title="追加换行符">
-            <option value="lf">LF(\n)</option>
-            <option value="crlf">CRLF(\r\n)</option>
-            <option value="none">无</option>
+          <select className="send-line-ending" value={activeTab.lineEnding} onChange={(e) => updateActiveTab({ lineEnding: e.target.value as 'none' | 'lf' | 'crlf' })} disabled={!activeTab.active}>
+            <option value="lf">{tr('mon.lineLf')}</option>
+            <option value="crlf">{tr('mon.lineCrlf')}</option>
+            <option value="none">{tr('mon.lineNone')}</option>
           </select>
           {/* #36 定时循环发送 */}
-          <label className="send-option" title="定时循环发送（毫秒，0=关闭）">
-            定时
+          <label className="send-option">
+            {tr('mon.repeat')}
             <input
               type="number"
               min={0}
@@ -482,7 +484,7 @@ export function MonitorView() {
           </label>
           {activeTab.sendHistory.length > 0 && (
             <Button variant="ghost" size="sm" onClick={() => updateActiveTab({ showHistory: !activeTab.showHistory })}>
-              🕘 历史 ({activeTab.sendHistory.length})
+              {tr('mon.history')} ({activeTab.sendHistory.length})
             </Button>
           )}
         </div>
@@ -501,7 +503,7 @@ export function MonitorView() {
 }
 
 /// #39 轻量折线图（canvas 自绘，无新依赖）
-function SerialChart({ points }: { points: { x: number; y: number }[] }) {
+function SerialChart({ points, title }: { points: { x: number; y: number }[]; title?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -546,7 +548,7 @@ function SerialChart({ points }: { points: { x: number; y: number }[] }) {
   }, [points]);
   return (
     <div>
-      <div className="chart-title">数值趋势（最近 {points.length} 点）</div>
+      <div className="chart-title">{title ?? `Trend (${points.length} pts)`}</div>
       <canvas ref={canvasRef} width={800} height={160} style={{ width: '100%', maxWidth: 900 }} />
     </div>
   );

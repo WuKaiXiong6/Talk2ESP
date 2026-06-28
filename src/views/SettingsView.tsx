@@ -1,6 +1,6 @@
 // 文件路径：src/views/SettingsView.tsx
-// 文件作用：设置视图——LLM/自动化/黑名单可视化/工具链/数据管理/重试/导入导出/重置
-// 最后更新时间：2026-06-29-0130
+// 文件作用：设置视图——LLM/自动化/黑名单可视化/工具链/数据管理/重试/导入导出/重置/i18n
+// 最后更新时间：2026-06-29-0230
 
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -8,6 +8,7 @@ import type { Settings, ToolchainStatus } from '../types';
 import { Button, Badge, Card } from '../components/ui';
 import { PinMap } from '../components/PinMap';
 import { useNotifications } from '../components/notifications';
+import { useI18n } from '../i18n';
 import './SettingsView.css';
 
 interface SettingsViewProps {
@@ -25,6 +26,7 @@ const PROVIDER_PRESETS: { label: string; provider: string; base_url: string; mod
 
 export function SettingsView({ onSaved }: SettingsViewProps) {
   const notify = useNotifications();
+  const { t } = useI18n();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
   // #63 LLM 连接测试
@@ -178,19 +180,19 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
     input.click();
   };
 
-  if (!settings) return <div>加载设置中…</div>;
+  if (!settings) return <div>{t('set.loading')}</div>;
 
   return (
     <div className="settings-view">
-      <h3>设置</h3>
-      <p className="settings-hint">配置保存在 <code>%USERPROFILE%\.talk2esp\settings.json</code>，重启不丢失。</p>
+      <h3>{t('set.title')}</h3>
+      <p className="settings-hint">{t('set.hint')} <code>%USERPROFILE%\.talk2esp\settings.json</code>{t('set.hint2')}</p>
 
       {/* LLM 配置 */}
       <Card className="settings-section">
-        <h4>LLM 配置</h4>
+        <h4>{t('set.llm')}</h4>
         {/* #64 供应商预设 */}
         <div className="settings-row">
-          <label>快捷预设</label>
+          <label>{t('set.preset')}</label>
           <select onChange={(e) => {
             const preset = PROVIDER_PRESETS[+e.target.value];
             if (preset) {
@@ -199,24 +201,24 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
               update('llm.model', preset.model);
             }
           }} value="">
-            <option value="" disabled>选择供应商预设…</option>
+            <option value="" disabled>{t('set.selectPreset')}</option>
             {PROVIDER_PRESETS.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
           </select>
         </div>
         <div className="settings-row">
-          <label>供应商</label>
+          <label>{t('set.provider')}</label>
           <select value={settings.llm.provider} onChange={(e) => update('llm.provider', e.target.value)}>
-            <option value="openai_compat">OpenAI 兼容（火山/智谱/DeepSeek/通义等）</option>
-            <option value="claude">Claude（暂未实现）</option>
+            <option value="openai_compat">{t('set.providerOpenai')}</option>
+            <option value="claude">{t('set.providerClaude')}</option>
           </select>
         </div>
         <div className="settings-row">
-          <label>Base URL</label>
+          <label>{t('set.baseUrl')}</label>
           <input value={settings.llm.base_url} onChange={(e) => update('llm.base_url', e.target.value)}
             placeholder="https://ark.cn-beijing.volces.com/api/coding/v3" />
         </div>
         <div className="settings-row">
-          <label>API Key</label>
+          <label>{t('set.apiKey')}</label>
           {/* #65 API Key 掩码 */}
           <input
             type={showKey ? 'text' : 'password'}
@@ -224,62 +226,62 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
             onChange={(e) => update('llm.api_key', e.target.value)}
             placeholder="your-api-key"
           />
-          <Button variant="ghost" size="sm" onClick={() => setShowKey((v) => !v)}>{showKey ? '🙈 隐藏' : '👁 显示'}</Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowKey((v) => !v)}>{showKey ? t('set.hideKey') : t('set.showKey')}</Button>
         </div>
         <div className="settings-row">
-          <label>模型名</label>
+          <label>{t('set.model')}</label>
           <input value={settings.llm.model} onChange={(e) => update('llm.model', e.target.value)} placeholder="glm-4-plus" />
         </div>
         <div className="settings-row">
-          <label>max_tokens</label>
+          <label>{t('set.maxTokens')}</label>
           <input type="number" value={settings.llm.max_tokens} onChange={(e) => update('llm.max_tokens', +e.target.value)} />
-          <span className="hint">推理模型建议 ≥ 8192</span>
+          <span className="hint">{t('set.maxTokensHint')}</span>
         </div>
         {/* #63 LLM 连接测试 */}
         <div className="settings-row">
           <label></label>
-          <Button variant="secondary" size="sm" onClick={testLlm} loading={testingLlm}>🔗 测试连接</Button>
+          <Button variant="secondary" size="sm" onClick={testLlm} loading={testingLlm}>{t('set.testConn')}</Button>
         </div>
       </Card>
 
       {/* 自动化模式 */}
       <Card className="settings-section">
-        <h4>自动化模式</h4>
+        <h4>{t('set.automation')}</h4>
         <div className="settings-row">
-          <label>模式</label>
+          <label>{t('set.mode')}</label>
           <select value={settings.automation.mode} onChange={(e) => update('automation.mode', e.target.value)}>
-            <option value="full">全自动（连续执行）</option>
-            <option value="step">分步确认（每步需确认）</option>
+            <option value="full">{t('set.modeFull')}</option>
+            <option value="step">{t('set.modeStep')}</option>
           </select>
         </div>
         <div className="settings-row">
-          <label>烧录前确认</label>
+          <label>{t('set.confirmFlash')}</label>
           <input type="checkbox" checked={settings.automation.confirm_before_flash}
             onChange={(e) => update('automation.confirm_before_flash', e.target.checked)} />
-          <span className="hint">开启后烧录前需手动确认</span>
+          <span className="hint">{t('set.confirmFlashHint')}</span>
         </div>
       </Card>
 
       {/* #67 引脚黑名单可视化 */}
       <Card className="settings-section">
-        <h4>引脚黑名单可视化</h4>
+        <h4>{t('set.pinBlacklist')}</h4>
         <div className="settings-row">
-          <label>选择芯片</label>
+          <label>{t('set.selectChip')}</label>
           <select value={pinChip} onChange={(e) => setPinChip(e.target.value)}>
             {chips.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="settings-row">
-          <label>额外禁止引脚(逗号分隔)</label>
+          <label>{t('set.extraError')}</label>
           <input value={settings.pin_blacklist.extra_error.join(',')}
             onChange={(e) => update('pin_blacklist.extra_error', e.target.value.split(',').map((s) => +s.trim()).filter((n) => !isNaN(n)))}
-            placeholder="如 9,10" />
+            placeholder="9,10" />
         </div>
         <div className="settings-row">
-          <label>额外提示引脚(逗号分隔)</label>
+          <label>{t('set.extraWarn')}</label>
           <input value={settings.pin_blacklist.extra_warn.join(',')}
             onChange={(e) => update('pin_blacklist.extra_warn', e.target.value.split(',').map((s) => +s.trim()).filter((n) => !isNaN(n)))}
-            placeholder="如 11,12" />
+            placeholder="11,12" />
         </div>
         <div className="pinmap-wrapper">
           <PinMap chip={pinChip} extraError={settings.pin_blacklist.extra_error} extraWarn={settings.pin_blacklist.extra_warn} />
@@ -288,41 +290,41 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
 
       {/* #71 日志与数据管理 */}
       <Card className="settings-section">
-        <h4>日志与数据管理</h4>
+        <h4>{t('set.dataMgmt')}</h4>
         <div className="settings-row">
-          <label>项目数量上限</label>
+          <label>{t('set.maxProjects')}</label>
           <input type="number" value={settings.data_management.max_projects}
             onChange={(e) => update('data_management.max_projects', +e.target.value)} />
-          <span className="hint">0=不限，超出提示清理</span>
+          <span className="hint">{t('set.maxProjectsHint')}</span>
         </div>
         <div className="settings-row">
-          <label>日志保留天数</label>
+          <label>{t('set.logRetention')}</label>
           <input type="number" value={settings.data_management.log_retention_days}
             onChange={(e) => update('data_management.log_retention_days', +e.target.value)} />
-          <span className="hint">0=不限，超期自动清理</span>
+          <span className="hint">{t('set.logRetentionHint')}</span>
         </div>
         <div className="settings-row">
           <label></label>
-          <Button variant="secondary" size="sm" onClick={cleanupData} loading={cleaning}>🧹 立即清理超期日志</Button>
+          <Button variant="secondary" size="sm" onClick={cleanupData} loading={cleaning}>{t('set.cleanup')}</Button>
         </div>
       </Card>
 
       {/* #69 重试次数可配置 */}
       <Card className="settings-section">
-        <h4>失败重试次数</h4>
-        <p className="settings-hint">各阶段失败时的重试上限（0-5）。0 = 失败不重试直接转人工；默认 3 保持既有行为。</p>
+        <h4>{t('set.retryTitle')}</h4>
+        <p className="settings-hint">{t('set.retryHint')}</p>
         <div className="settings-row">
-          <label>编译重试</label>
+          <label>{t('set.retryCompile')}</label>
           <input type="number" min={0} max={5} value={settings.retry.compile}
             onChange={(e) => update('retry.compile', Math.max(0, Math.min(5, +e.target.value || 0)))} />
         </div>
         <div className="settings-row">
-          <label>烧录重试</label>
+          <label>{t('set.retryFlash')}</label>
           <input type="number" min={0} max={5} value={settings.retry.flash}
             onChange={(e) => update('retry.flash', Math.max(0, Math.min(5, +e.target.value || 0)))} />
         </div>
         <div className="settings-row">
-          <label>验证重试</label>
+          <label>{t('set.retryVerify')}</label>
           <input type="number" min={0} max={5} value={settings.retry.verify}
             onChange={(e) => update('retry.verify', Math.max(0, Math.min(5, +e.target.value || 0)))} />
         </div>
@@ -330,61 +332,61 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
 
       {/* 工具链 / 高级 */}
       <Card className="settings-section">
-        <h4>工具链 / 高级</h4>
+        <h4>{t('set.toolchain')}</h4>
         <div className="settings-row">
-          <label>arduino-cli 路径</label>
+          <label>{t('set.cliPath')}</label>
           <input value={settings.toolchain.arduino_cli_path} onChange={(e) => update('toolchain.arduino_cli_path', e.target.value)}
-            placeholder="留空则用内置或系统 PATH" />
+            placeholder={t('set.cliPathHint')} />
         </div>
         <div className="settings-row">
-          <label>默认波特率</label>
+          <label>{t('set.defaultBaud')}</label>
           <input type="number" value={settings.toolchain.default_baud} onChange={(e) => update('toolchain.default_baud', +e.target.value)} />
         </div>
         <div className="settings-row">
-          <label>详细日志</label>
+          <label>{t('set.verboseLog')}</label>
           <input type="checkbox" checked={settings.toolchain.verbose_log}
             onChange={(e) => update('toolchain.verbose_log', e.target.checked)} />
         </div>
         {/* #70 工具链健康检查 */}
         <div className="settings-row">
           <label></label>
-          <Button variant="secondary" size="sm" onClick={checkToolchain} loading={checkingToolchain}>🩺 工具链检查</Button>
+          <Button variant="secondary" size="sm" onClick={checkToolchain} loading={checkingToolchain}>{t('set.checkToolchain')}</Button>
         </div>
         {toolchain && (
           <div className="toolchain-status">
             <div className="toolchain-item">
-              <span>arduino-cli</span>
+              <span>{t('set.tcArduino')}</span>
               {toolchain.cli_found
-                ? <Badge tone="success">✓ {toolchain.version ?? '已安装'}</Badge>
-                : <Badge tone="danger" title={toolchain.error ?? ''}>✗ 未找到</Badge>}
+                ? <Badge tone="success">✓ {toolchain.version ?? t('set.tcInstalled')}</Badge>
+                : <Badge tone="danger" title={toolchain.error ?? ''}>{t('set.tcNotFound')}</Badge>}
             </div>
             <div className="toolchain-item">
-              <span>路径</span>
+              <span>{t('set.tcPath')}</span>
               <code>{toolchain.cli_path ?? '-'}</code>
             </div>
             <div className="toolchain-item">
-              <span>ESP32 核心</span>
+              <span>{t('set.esp32Core')}</span>
               {toolchain.esp32_cores.length > 0
                 ? toolchain.esp32_cores.map((c) => <Badge key={c} tone="info">{c}</Badge>)
-                : <Badge tone="warning">未安装</Badge>}
+                : <Badge tone="warning">{t('set.notInstalled')}</Badge>}
             </div>
             <div className="toolchain-item">
-              <span>esptool</span>
+              <span>{t('set.esptool')}</span>
               {toolchain.esptool_available
-                ? <Badge tone="success">✓ 可用</Badge>
-                : <Badge tone="danger">✗ 不可用（py -m esptool）</Badge>}
+                ? <Badge tone="success">{t('set.esptoolAvailable')}</Badge>
+                : <Badge tone="danger">{t('set.esptoolUnavailable')}</Badge>}
             </div>
           </div>
         )}
       </Card>
 
       <div className="settings-actions">
-        <Button variant="primary" onClick={save} loading={saving}>{saving ? '保存中…' : '💾 保存设置'}</Button>
+        <Button variant="primary" onClick={save} loading={saving}>{saving ? t('set.saving') : t('set.save')}</Button>
         {/* #72 设置导入导出 */}
-        <Button variant="secondary" onClick={exportSettings}>📤 导出设置</Button>
-        <Button variant="secondary" onClick={importSettings}>📥 导入设置</Button>
+        <Button variant="secondary" onClick={exportSettings}>{t('set.exportSettings')}</Button>
+        <Button variant="secondary" onClick={importSettings}>{t('set.importSettings')}</Button>
         {/* #72 重置 */}
-        <Button variant="ghost" onClick={reset}>↺ 重置</Button>
+        <Button variant="ghost" onClick={reset}>{t('btn.reset')}</Button>
       </div>
     </div>
   );

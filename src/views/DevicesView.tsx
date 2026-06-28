@@ -1,6 +1,6 @@
 // 文件路径：src/views/DevicesView.tsx
-// 文件作用：设备管理视图——设备卡片化 + 详情 + 热插拔感知 + 识别失败引导 + 占用冲突 + 连接测试 + 驱动检测 + 固件信息解析(#49)
-// 最后更新时间：2026-06-29-0130
+// 文件作用：设备管理视图——设备卡片化 + 详情 + 热插拔感知 + 识别失败引导 + 占用冲突 + 连接测试 + 驱动检测 + 固件信息解析(#49) + i18n
+// 最后更新时间：2026-06-29-0230
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +9,7 @@ import { Button, Badge, Card, IconButton } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonCard } from '../components/Skeleton';
 import { useNotifications } from '../components/notifications';
+import { useI18n } from '../i18n';
 import './DevicesView.css';
 
 interface DevicesViewProps {
@@ -27,6 +28,7 @@ type PlugEvent = { type: 'connect' | 'disconnect'; port: string; ts: string };
 export function DevicesView(props: DevicesViewProps) {
   const { devices, loading, selectedPort, onRefresh, onSelect, onGoDevelop, onGoMonitor } = props;
   const notify = useNotifications();
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [driverMap, setDriverMap] = useState<Record<string, DriverInfo>>({});
   const [testing, setTesting] = useState<string | null>(null);
@@ -141,19 +143,19 @@ export function DevicesView(props: DevicesViewProps) {
   return (
     <div className="devices-view">
       <div className="view-header">
-        <h3>设备管理（{devices.length}）</h3>
+        <h3>{t('dev2.title')}（{devices.length}）</h3>
         <Button variant="secondary" size="sm" onClick={onRefresh} disabled={loading}>
-          {loading ? '扫描中…' : '🔄 刷新设备'}
+          {loading ? t('dev2.scanning') : t('dev2.refreshShort')}
         </Button>
       </div>
 
       {/* #43 热插拔事件流 */}
       {plugEvents.length > 0 && (
         <div className="plug-events">
-          <span className="plug-events-label">🔌 热插拔事件：</span>
+          <span className="plug-events-label">{t('dev2.plugEvents')}</span>
           {plugEvents.slice(0, 5).map((e, i) => (
             <span key={i} className={`plug-event plug-${e.type}`}>
-              {e.type === 'connect' ? '➕' : '➖'} {e.port} <span className="plug-ts">{e.ts}</span>
+              {e.type === 'connect' ? t('dev2.plugConnect') : t('dev2.plugDisconnect')} {e.port} <span className="plug-ts">{e.ts}</span>
             </span>
           ))}
         </div>
@@ -166,11 +168,11 @@ export function DevicesView(props: DevicesViewProps) {
       ) : devices.length === 0 ? (
         <EmptyState
           icon="🔌"
-          title="未检测到设备"
-          description="请连接 ESP32 开发板后刷新设备列表。常见原因：①USB 数据线不支持数据传输；②CH343/CP210x 驱动未安装；③设备被其他串口工具占用。"
+          title={t('dev2.emptyTitle')}
+          description={t('dev2.emptyDescLong')}
           actions={[
-            { label: '刷新设备', onClick: onRefresh },
-            { label: '返回开发', onClick: onGoDevelop },
+            { label: t('dev2.refreshBtn'), onClick: onRefresh },
+            { label: t('dev2.backDevelop'), onClick: onGoDevelop },
           ]}
         />
       ) : (
@@ -182,54 +184,54 @@ export function DevicesView(props: DevicesViewProps) {
                   <span className="device-port">{d.port}</span>
                   {/* #51 设备别名 */}
                   {aliases[d.port] && editingAlias !== d.port && (
-                    <span className="device-alias" title="自定义别名">{aliases[d.port]}</span>
+                    <span className="device-alias" title={t('dev2.alias')}>{aliases[d.port]}</span>
                   )}
                 </div>
                 {editingAlias === d.port ? (
                   <div className="alias-edit" onClick={(e) => e.stopPropagation()}>
                     <input value={aliasValue} onChange={(e) => setAliasValue(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(d.port, aliasValue); if (e.key === 'Escape') setEditingAlias(null); }}
-                      placeholder="输入别名" autoFocus />
-                    <IconButton label="确认" onClick={() => saveAlias(d.port, aliasValue)}>✓</IconButton>
-                    <IconButton label="取消" onClick={() => setEditingAlias(null)}>✕</IconButton>
+                      placeholder={t('dev2.aliasPlaceholder')} autoFocus />
+                    <IconButton label={t('btn.confirm')} onClick={() => saveAlias(d.port, aliasValue)}>✓</IconButton>
+                    <IconButton label={t('btn.cancel')} onClick={() => setEditingAlias(null)}>✕</IconButton>
                   </div>
                 ) : (
                   <div className="device-card-header-right">
-                    {d.detected ? <Badge tone="success">✓ 已识别</Badge> : <Badge tone="warning">⚠ 未识别</Badge>}
+                    {d.detected ? <Badge tone="success">{t('dev2.identifyOk')}</Badge> : <Badge tone="warning">{t('dev2.identifyWarn')}</Badge>}
                     {/* #51 别名编辑 */}
-                    <IconButton label="设置别名" onClick={(e) => { e.stopPropagation(); setEditingAlias(d.port); setAliasValue(aliases[d.port] ?? ''); }}>🏷</IconButton>
+                    <IconButton label={t('dev2.setAlias')} onClick={(e) => { e.stopPropagation(); setEditingAlias(d.port); setAliasValue(aliases[d.port] ?? ''); }}>🏷</IconButton>
                   </div>
                 )}
               </div>
               <div className="device-card-body">
-                {d.chip && <div className="device-field"><span>芯片</span><strong>{d.chip}</strong></div>}
-                {d.mac && <div className="device-field"><span>MAC</span><strong className="mono">{d.mac}</strong></div>}
-                {d.flash_size && <div className="device-field"><span>Flash</span><strong>{d.flash_size}</strong></div>}
-                {d.product && <div className="device-field"><span>产品</span><strong>{d.product}</strong></div>}
+                {d.chip && <div className="device-field"><span>{t('dev2.fChip')}</span><strong>{d.chip}</strong></div>}
+                {d.mac && <div className="device-field"><span>{t('dev2.fMac')}</span><strong className="mono">{d.mac}</strong></div>}
+                {d.flash_size && <div className="device-field"><span>{t('dev2.fFlash')}</span><strong>{d.flash_size}</strong></div>}
+                {d.product && <div className="device-field"><span>{t('dev2.fProduct')}</span><strong>{d.product}</strong></div>}
                 {d.vid != null && (
-                  <div className="device-field"><span>VID:PID</span><strong className="mono">0x{d.vid.toString(16)}:0x{d.pid?.toString(16) ?? '?'}</strong></div>
+                  <div className="device-field"><span>{t('dev2.fVidPid')}</span><strong className="mono">0x{d.vid.toString(16)}:0x{d.pid?.toString(16) ?? '?'}</strong></div>
                 )}
                 {/* #52 驱动检测 */}
                 {driverMap[d.port] && (
                   <div className="device-field">
-                    <span>驱动</span>
+                    <span>{t('dev2.fDriver')}</span>
                     <Badge tone="info" title={driverMap[d.port].hint}>{driverMap[d.port].driver}</Badge>
                   </div>
                 )}
                 {/* #45 连接测试结果 */}
                 {testResults[d.port] && (
                   <div className="device-field">
-                    <span>连接</span>
+                    <span>{t('dev2.fConn')}</span>
                     {testResults[d.port].can_open
-                      ? <Badge tone={testResults[d.port].has_response ? 'success' : 'info'}>可打开{testResults[d.port].has_response ? '·有响应' : '·无响应'}</Badge>
-                      : <Badge tone="danger" title={testResults[d.port].error ?? ''}>失败</Badge>}
+                      ? <Badge tone={testResults[d.port].has_response ? 'success' : 'info'}>{t('dev2.connCanOpen')}{testResults[d.port].has_response ? t('dev2.connHasResp') : t('dev2.connNoResp')}</Badge>
+                      : <Badge tone="danger" title={testResults[d.port].error ?? ''}>{t('dev2.connFailedBadge')}</Badge>}
                   </div>
                 )}
               </div>
               {/* #47 识别失败引导 */}
               {!d.detected && (
                 <div className="device-hint">
-                  未识别为 ESP 设备。可能原因：非 ESP 板、esptool 未安装、或端口被占用。
+                  {t('dev2.notEspHint')}
                   {driverMap[d.port] && <div className="device-hint-detail">{driverMap[d.port].hint}</div>}
                 </div>
               )}
@@ -239,17 +241,17 @@ export function DevicesView(props: DevicesViewProps) {
               )}
               <div className="device-card-actions">
                 <Button variant="secondary" size="sm" onClick={() => testConnection(d.port)} loading={testing === d.port}>
-                  🔗 测试连接
+                  {t('dev2.testConn')}
                 </Button>
                 {/* #49 读取固件信息 */}
                 <Button variant="ghost" size="sm" onClick={() => readFirmware(d.port)} loading={readingFw === d.port}>
-                  📋 固件
+                  {t('dev2.firmware')}
                 </Button>
                 <Button variant="primary" size="sm" onClick={() => { onSelect(d.port, d.chip); onGoDevelop(); }} disabled={!d.detected}>
-                  选为开发设备
+                  {t('dev2.selectDev')}
                 </Button>
-                <IconButton label="串口监控" onClick={onGoMonitor}>📡</IconButton>
-                <IconButton label="详情" onClick={() => setExpanded(expanded === d.port ? null : d.port)}>ℹ</IconButton>
+                <IconButton label={t('dev2.monitorTitle')} onClick={onGoMonitor}>📡</IconButton>
+                <IconButton label={t('dev2.detailTitle')} onClick={() => setExpanded(expanded === d.port ? null : d.port)}>ℹ</IconButton>
               </div>
               {/* #49 固件信息结构化展示 */}
               {fwInfo?.port === d.port && (
@@ -267,10 +269,10 @@ export function DevicesView(props: DevicesViewProps) {
               )}
               {expanded === d.port && (
                 <div className="device-detail">
-                  <div className="device-field"><span>厂商</span><strong>{d.manufacturer ?? '-'}</strong></div>
-                  <div className="device-field"><span>序列号</span><strong className="mono">{d.serial_number ?? '-'}</strong></div>
+                  <div className="device-field"><span>{t('dev2.vendor')}</span><strong>{d.manufacturer ?? '-'}</strong></div>
+                  <div className="device-field"><span>{t('dev2.serial')}</span><strong className="mono">{d.serial_number ?? '-'}</strong></div>
                   {driverMap[d.port] && (
-                    <div className="device-field"><span>厂商(驱动)</span><strong>{driverMap[d.port].vendor}</strong></div>
+                    <div className="device-field"><span>{t('dev2.driverVendor')}</span><strong>{driverMap[d.port].vendor}</strong></div>
                   )}
                 </div>
               )}

@@ -508,12 +508,23 @@ fn get_app_version() -> String {
 }
 
 /// #94 远程更新检查：拉取 GitHub Releases 最新版本号与当前版本对比
-/// 返回 (是否有更新, 最新版本号, 下载页 URL)；网络失败返回 (false, 当前版本, "")
+/// 返回 UpdateInfo（含是否有更新、最新版本、release 页 URL、setup.exe 资产 URL）；
+/// 网络失败返回字段为空的 UpdateInfo，前端可据此降级
 /// 免依赖方案：直接 reqwest GitHub API，不引入 tauri-plugin-updater
+#[derive(serde::Serialize, Clone, Debug, Default)]
+struct UpdateInfo {
+    has_update: bool,
+    latest: String,
+    current: String,
+    release_url: String,
+    /// setup.exe 资产 URL（用于一键更新下载）；找不到时为空
+    asset_url: String,
+}
+
 #[tauri::command]
-async fn check_for_update() -> Result<(bool, String, String), String> {
+async fn check_for_update() -> Result<UpdateInfo, String> {
     const REPO: &str = "Wukaixiong/Talk2ESP";
-    let current = env!("CARGO_PKG_VERSION");
+    let current = env!("CARGO_PKG_VERSION").to_string();
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
     let client = reqwest::Client::builder()
         .user_agent("Talk2ESP-updater")
@@ -526,7 +537,7 @@ async fn check_for_update() -> Result<(bool, String, String), String> {
         .await
         .map_err(|e| format!("请求 GitHub 失败: {e}"))?;
     if !resp.status().is_success() {
-        return Ok((false, current.to_string(), String::new()));
+        return Ok(UpdateInfo { has_update: false, latest: String::new(), current, release_url: String::new(), asset_url: String::new() });
     }
     let json: serde_json::Value = resp
         .json()
@@ -538,14 +549,77 @@ async fn check_for_update() -> Result<(bool, String, String), String> {
         .unwrap_or("")
         .trim_start_matches('v')
         .to_string();
-    let html_url = json
+    let release_url = json
         .get("html_url")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    // 简单字符串比较：远程版本号不同且大于当前则认为有更新
+    // 从 assets 中查找 setup.exe（Windows 安装包），优先匹配 _x64-setup.exe
+    let mut asset_url = String::new();
+    if let Some(assets) = json.get("assets").and_then(|v| v.as_array()) {
+        // 优先 x64-setup.exe
+        for a in assets {
+            if let Some(name) = a.get("name").and_then(|v| v.as_str()) {
+                if name.to_lowercase().contains("x64") && name.to_lowercase().ends_with("setup.exe") {
+                    asset_url = a.get("browser_download_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    break;
+                }
+            }
+        }
+        // 退化匹配 setup.exe
+        if asset_url.is_empty() {
+            for a in assets {
+                if let Some(name) = a.get("name").and_then(|v| v.as_str()) {
+                    if name.to_lowercase().ends_with("setup.exe") {
+                        asset_url = a.get("browser_download_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // 简单字符串比较：远程版本号不同且非空则认为有更新
     let has_update = !latest.is_empty() && latest != current;
-    Ok((has_update, latest, html_url))
+    Ok(UpdateInfo { has_update, latest, current, release_url, asset_url })
+}
+
+/// #94 一键更新：下载安装包到临时目录并启动，由用户在系统对话框中完成安装
+/// 返回下载到的本地路径；失败返回错误。下载完成后启动安装程序但不强制结束当前应用。
+/// 安全提示：仅支持 .exe 安装包；URL 必须来自 GitHub Releases（github.com 域名）
+#[tauri::command]
+async fn apply_update(asset_url: String) -> Result<String, String> {
+    // 安全校验：仅允许 github.com 下载，避免被引导下载任意 URL
+    if !asset_url.starts_with("https://github.com/") && !asset_url.starts_with("https://objects.githubusercontent.com/") {
+        return Err("仅支持来自 GitHub 的下载 URL，已拒绝".to_string());
+    }
+    if !asset_url.to_lowercase().ends_with(".exe") {
+        return Err("仅支持 .exe 安装包下载".to_string());
+    }
+    // 下载到 %TEMP%\Talk2ESP-update.exe
+    let client = reqwest::Client::builder()
+        .user_agent("Talk2ESP-updater")
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
+    let resp = client.get(&asset_url).send().await.map_err(|e| format!("下载失败: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("下载失败 HTTP {}", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| format!("读取响应体失败: {e}"))?;
+    let tmp = std::env::temp_dir().join("Talk2ESP-update.exe");
+    std::fs::write(&tmp, &bytes).map_err(|e| format!("写入临时文件失败: {e}"))?;
+    // 启动安装程序（非阻塞）；用户完成后会替换当前 exe
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new(&tmp)
+            .spawn()
+            .map_err(|e| format!("启动安装程序失败: {e}"))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 非 Windows 暂只支持下载，让用户自行运行
+    }
+    Ok(tmp.to_string_lossy().to_string())
 }
 
 /// M5：追加对话消息
@@ -872,6 +946,7 @@ pub fn run() {
             read_firmware_info,
             get_app_version,
             check_for_update,
+            apply_update,
             append_message,
             load_messages,
             write_main_code,
