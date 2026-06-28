@@ -1,0 +1,89 @@
+/* 文件路径：src/views/DevicesView.css */
+/* 文件作用：设备管理视图样式——卡片网格 + 热插拔事件 + 驱动/连接状态 */
+/* 最后更新时间：2026-06-28-1250 */
+
+.devices-view { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.plug-events {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-info-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.plug-events-label { color: var(--color-info-text); font-weight: 600; }
+
+.plug-event {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+}
+
+.plug-connect { background: var(--color-success-bg); color: var(--color-success-text); }
+.plug-disconnect { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.plug-ts { font-family: var(--font-mono); opacity: 0.7; }
+
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-3);
+}
+
+.device-card { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.device-card.selected { border: 2px solid var(--color-primary); }
+
+.device-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.device-port { font-size: var(--font-size-lg); font-weight: 700; color: var(--color-primary); }
+
+.device-card-body { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.device-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.device-field > span { color: var(--color-text-muted); min-width: 60px; }
+.device-field > strong { color: var(--color-text-primary); text-align: right; word-break: break-all; }
+.device-field .mono { font-family: var(--font-mono); font-size: var(--font-size-xs); }
+
+.device-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.device-hint-warn { color: var(--color-danger-text); background: var(--color-danger-bg); }
+
+.device-hint-detail { margin-top: var(--space-1); color: var(--color-text-secondary); }
+
+.device-card-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.device-detail {
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

@@ -63,6 +63,18 @@ fn scan_devices() -> Vec<DeviceInfo> {
     device::scan_devices()
 }
 
+/// #52 根据 VID/PID 推测 USB-串口驱动信息
+#[tauri::command]
+fn check_driver(vid: Option<u16>, pid: Option<u16>) -> Option<device::DriverInfo> {
+    device::check_driver(vid, pid)
+}
+
+/// #45 测试设备连接：打开串口并短暂读取判断响应
+#[tauri::command]
+fn test_device_connection(port: String, baud: Option<u32>) -> device::ConnectionTestResult {
+    device::test_device_connection(&port, baud.unwrap_or(115200))
+}
+
 /// M1：启动某端口的串口监控，行输出经 Channel 推送前端
 /// #40 新增可选串口参数（data_bits/parity/stop_bits），缺省时保持 8N1 兼容既有行为
 #[tauri::command]
@@ -378,6 +390,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_ports,
             scan_devices,
+            check_driver,
+            test_device_connection,
             start_monitor,
             send_serial,
             stop_monitor,

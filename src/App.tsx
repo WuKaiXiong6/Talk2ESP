@@ -331,8 +331,11 @@ function AppInner() {
             )}
             {view === 'devices' && (
               <DevicesView
-                devices={devices} loading={devicesLoading}
-                onRefresh={refreshDevices} onGoDevelop={() => setView('develop')}
+                devices={devices} loading={devicesLoading} selectedPort={selectedPort}
+                onRefresh={refreshDevices}
+                onSelect={(p, chip) => { setSelectedPort(p); if (chip) setSelectedChip(chip); }}
+                onGoDevelop={() => setView('develop')}
+                onGoMonitor={() => setView('monitor')}
               />
             )}
             {view === 'projects' && <ProjectsView />}

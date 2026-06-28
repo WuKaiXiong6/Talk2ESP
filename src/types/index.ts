@@ -24,6 +24,21 @@ export interface DeviceInfo {
   detected: boolean;
 }
 
+/// #52 驱动检测结果
+export interface DriverInfo {
+  driver: string;
+  vendor: string;
+  installed: boolean;
+  hint: string;
+}
+
+/// #45 设备连接测试结果
+export interface ConnectionTestResult {
+  can_open: boolean;
+  has_response: boolean;
+  error: string | null;
+}
+
 export interface ChatMessage {
   role: string;
   content: string;
