@@ -1,0 +1,80 @@
+/* 文件路径：src/components/ThemeToggle.css */
+/* 文件作用：主题切换控件样式 */
+/* 最后更新时间：2026-06-28-1235 */
+
+.theme-toggle { position: relative; display: inline-flex; }
+
+.theme-toggle-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  font-size: var(--font-size-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+
+.theme-toggle-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.theme-toggle-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.theme-toggle-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.theme-toggle-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 1001;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-3);
+  min-width: 240px;
+}
+
+.theme-toggle-group { margin-bottom: var(--space-3); }
+.theme-toggle-group:last-child { margin-bottom: 0; }
+
+.theme-toggle-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.theme-toggle-row { display: flex; gap: var(--space-1); }
+
+.theme-toggle-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-hover);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.theme-toggle-option:hover { background: var(--color-bg-subtle); color: var(--color-text-primary); }
+
+.theme-toggle-option.active {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-primary);
+  font-weight: 600;
+}

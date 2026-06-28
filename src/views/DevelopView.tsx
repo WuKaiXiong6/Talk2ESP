@@ -108,7 +108,11 @@ export function DevelopView(props: DevelopViewProps) {
               <span className="progress-percent">{progress.percent}%</span>
             </div>
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
+              {/* #15 进度条分阶段着色：coding蓝/compiling橙/flashing紫/verifying青/成功绿/失败红 */}
+              <div
+                className={`progress-fill progress-${currentState || (outcome?.success ? 'archived' : outcome ? 'failed' : 'idle')}`}
+                style={{ width: `${progress.percent}%` }}
+              />
             </div>
             <div className="progress-message">{progress.message}</div>
           </div>

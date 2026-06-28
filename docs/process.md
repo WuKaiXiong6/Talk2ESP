@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1230
+最后更新时间：2026-06-28-1235
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -403,6 +403,25 @@
   - 核心逻辑（runAutoPipeline/chatWithAi/stopPipeline）行为未变，仅结构重构。
 - **结论**：部分通过（自动化部分全通过；GUI 渲染现象待人工验证）
 - **遗留问题**：①GUI 窗口内各视图渲染、通知弹窗、空状态展示需人工运行 `npm run tauri dev` 确认现象；②深色模式令牌已就位但切换开关在阶段B实现。
+
+### 验证 2026-06-28-1235：阶段B 主题与视觉（ux-theme）— #3/#6/#10/#12/#15/#26
+- **验证时间**：2026-06-28-1235
+- **验证对象**：深浅主题切换 + 字号调节 + 头部信息增强 + 动态窗口标题 + 进度条分阶段着色 + 成功庆祝反馈
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7
+- **实现内容**：
+  1. **#3 深色/浅色主题切换**：`useTheme` Hook 管理三态（light/dark/auto 跟随系统），写入 `<html data-theme>`，localStorage 持久化；`ThemeToggle` 控件（图标按钮 + 下拉面板）；`tokens.css` 深色令牌已就位；
+  2. **#10 字号调节**：四档（小/标准/大/超大）写入 `:root font-size`，所有 rem/令牌联动缩放，localStorage 持久化；
+  3. **#6 头部信息增强**：头部右侧展示当前设备/芯片、LLM 配置状态灯（StatusDot）、版本号、运行进度百分比；
+  4. **#12 窗口标题动态反馈**：useEffect 按运行状态/当前视图/设备更新 `document.title`（如「Talk2ESP · 运行中 45% · COM4」）；
+  5. **#15 进度条分阶段着色**：progress-fill 按 currentState 着色（coding紫/compiling橙/flashing紫/verifying青/成功绿/失败红）；
+  6. **#26 成功庆祝反馈**：流水线成功时通知系统弹「🎉 开发成功」+ outcome 区轻微弹跳动画。
+- **结构重构**：App 拆为 AppInner（含状态与逻辑）+ App（外层 NotificationProvider 包裹），修复 notify 在 provider 内可用的 Hook 顺序问题。
+- **观察现象**：
+  - `tsc --noEmit` 类型检查通过；
+  - `npm run build` 成功（50 模块，224KB JS / 26KB CSS）；
+  - 主题切换/字号调节写入 localStorage 后刷新页面保持。
+- **结论**：部分通过（自动化部分全通过；GUI 深浅主题切换、字号缩放、头部信息、进度着色现象待人工验证）
+- **遗留问题**：深色模式下各视图细节对比度需人工巡检；窗口标题在 Tauri 打包后是否正确显示需人工确认。
 
 ---
 

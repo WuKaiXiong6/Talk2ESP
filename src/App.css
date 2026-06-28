@@ -20,18 +20,28 @@
   color: var(--color-text-inverse);
   padding: var(--space-3) var(--space-6);
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
 }
+.header-left { display: flex; align-items: baseline; gap: var(--space-4); }
+.header-right { display: flex; align-items: center; gap: var(--space-3); margin-left: auto; }
 .header h1 { font-size: var(--font-size-2xl); }
 .subtitle { font-size: var(--font-size-sm); opacity: 0.85; }
+.header-info {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  opacity: 0.95;
+}
 .header-version {
-  margin-left: auto;
   font-size: var(--font-size-sm);
   opacity: 0.8;
   font-family: var(--font-mono);
 }
-.header-running { margin-left: var(--space-1); }
+.header-running { animation: header-pulse 1.5s ease-in-out infinite; }
+@keyframes header-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
 /* ===== 导航 ===== */
 .nav {
@@ -135,11 +145,27 @@
   height: 100%;
   background: linear-gradient(90deg, var(--color-primary), #4a9fd4);
   border-radius: var(--radius-full);
-  transition: width 0.5s ease;
+  transition: width 0.5s ease, background 0.4s ease;
   animation: pulse 1.5s ease-in-out infinite;
 }
+/* #15 分阶段着色 */
+.progress-fill.progress-coding { background: linear-gradient(90deg, #6a5acd, #8a7fff); }
+.progress-fill.progress-compiling { background: linear-gradient(90deg, #d39e00, #ffb84d); }
+.progress-fill.progress-flashing { background: linear-gradient(90deg, #8e44ad, #c065c4); }
+.progress-fill.progress-verifying { background: linear-gradient(90deg, #17a2b8, #4dd0e1); }
+.progress-fill.progress-archived { background: linear-gradient(90deg, #28a745, #5cd977); animation: none; }
+.progress-fill.progress-failed { background: linear-gradient(90deg, #c0392b, #e85a4a); animation: none; }
+.progress-fill.progress-idle { background: var(--color-text-muted); animation: none; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 .progress-message { margin-top: var(--space-1); font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+
+/* #26 成功庆祝动画：outcome 成功时整区轻微弹跳 */
+.outcome.success { animation: celebrate 0.6s ease; }
+@keyframes celebrate {
+  0% { transform: scale(0.96); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
 
 /* ===== 代码展示 ===== */
 .code-section { margin-top: var(--space-3); }

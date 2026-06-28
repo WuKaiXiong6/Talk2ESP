@@ -1,6 +1,6 @@
 // 文件路径：src/App.tsx
 // 文件作用：Talk2ESP 主界面——组合各视图，管理全局状态与流水线编排
-// 最后更新时间：2026-06-28-1230
+// 最后更新时间：2026-06-28-1235
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
@@ -8,8 +8,10 @@ import type {
   DeviceInfo, RequirementSpec, PipelineEvent, PipelineOutcome, ConversationMessage,
 } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { NotificationProvider, NotificationCenter } from './components/notifications';
-import { Badge } from './components/ui';
+import { NotificationProvider, NotificationCenter, useNotifications } from './components/notifications';
+import { Badge, StatusDot } from './components/ui';
+import { ThemeToggle } from './components/ThemeToggle';
+import { useTheme } from './theme/useTheme';
 import { DevelopView } from './views/DevelopView';
 import { DevicesView } from './views/DevicesView';
 import { ProjectsView } from './views/ProjectsView';
@@ -22,7 +24,9 @@ type View = 'develop' | 'devices' | 'projects' | 'monitor' | 'settings';
 
 const APP_VERSION = '0.1.0';
 
-function App() {
+function AppInner() {
+  const theme = useTheme();
+  const notify = useNotifications();
   const [view, setView] = useState<View>('develop');
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
@@ -184,25 +188,63 @@ function App() {
       setOutcome(result);
       if (result.success) {
         addLog('✅ 全自动开发成功！');
+        // #26 成功庆祝反馈：显著的成功通知 + 持续提示
+        notify.success('🎉 开发成功！', `${selectedChip} 项目已自动完成 生成→编译→烧录→验证 全流程`);
       } else {
         addLog(`❌ 失败: ${result.summary}`);
+        notify.error('开发未完成', result.summary);
       }
     } catch (e) {
       addLog(`流水线错误: ${e}`);
+      notify.error('流水线异常', String(e));
     }
     setRunning(false);
   };
 
+  // #12 窗口标题动态反馈：根据运行状态/当前视图/设备更新标题
+  useEffect(() => {
+    const viewLabel: Record<View, string> = {
+      develop: '开发', devices: '设备', projects: '项目', monitor: '串口监控', settings: '设置',
+    };
+    const parts = ['Talk2ESP'];
+    if (running) parts.push(`运行中 ${progress.percent}%`);
+    else parts.push(viewLabel[view]);
+    if (selectedPort) parts.push(selectedPort);
+    document.title = parts.join(' · ');
+  }, [view, running, progress.percent, selectedPort]);
+
   return (
-    <NotificationProvider>
-      <ErrorBoundary>
-        <div className="app">
-          <header className="header">
+    <ErrorBoundary>
+      <div className="app">
+        <header className="header">
+          <div className="header-left">
             <h1>Talk2ESP</h1>
             <span className="subtitle">自然语言驱动的 ESP32 全自动开发</span>
+          </div>
+          <div className="header-right">
+            {/* #6 头部信息增强：设备/芯片/模型/状态灯 */}
+            {selectedPort && (
+              <span className="header-info" title="当前设备">
+                <span aria-hidden>🔌</span> {selectedPort} · {selectedChip}
+              </span>
+            )}
+            {llmConfigured ? (
+              <span className="header-info" title="LLM 已配置"><StatusDot state="success" label="LLM" /></span>
+            ) : (
+              <span className="header-info" title="LLM 未配置"><StatusDot state="error" label="未配置" /></span>
+            )}
             <span className="header-version">v{APP_VERSION}</span>
-            {running && <Badge tone="info" className="header-running">运行中</Badge>}
-          </header>
+            {running && <Badge tone="info" className="header-running">运行中 {progress.percent}%</Badge>}
+            {/* #3 主题切换 + #10 字号调节 */}
+            <ThemeToggle
+              mode={theme.mode}
+              fontScale={theme.fontScale}
+              onMode={theme.setMode}
+              onFontScale={theme.setFontScale}
+              fontScaleLabel={theme.fontScaleLabel}
+            />
+          </div>
+        </header>
 
           <nav className="nav">
             <button className={view === 'develop' ? 'active' : ''} onClick={() => setView('develop')}>开发</button>
@@ -240,6 +282,16 @@ function App() {
         </div>
         <NotificationCenter />
       </ErrorBoundary>
+  );
+}
+
+/**
+ * 应用根组件：在通知系统 Provider 外层包裹，使 AppInner 可使用通知 Hook。
+ */
+function App() {
+  return (
+    <NotificationProvider>
+      <AppInner />
     </NotificationProvider>
   );
 }
