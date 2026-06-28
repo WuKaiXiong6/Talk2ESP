@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1014
+最后更新时间：2026-06-28-1017
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -30,7 +30,7 @@
 | M2 | 工具链层（arduino-cli编译+esptool烧录） | ✅ 完成 | 编译+烧录COM8流式推送测试通过 |
 | M3 | AI 适配层（OpenAI兼容+Claude） | ✅ 完成 | 真实LLM对话+代码生成+生成代码可编译通过 |
 | M4 | 安全层 + 型号描述表 | ✅ 完成 | 引脚黑名单Error/Warn+危险扫描18测试全过 |
-| M5 | 项目/存储层 | ⏳ 未开始 | |
+| M5 | 项目/存储层 | ✅ 完成 | 项目CRUD+对话记录+代码/日志读写23测试全过 |
 | M6 | 编排器（流水线状态机） | ⏳ 未开始 | |
 | M7 | 前端完整界面 | ⏳ 未开始 | |
 | M8 | 闭环验证（双板自测） | ⏳ 未开始 | |
@@ -184,6 +184,25 @@
   - 全量 18 个测试通过，无回归无警告。
 - **结论**：通过
 - **遗留问题**：Octal PSRAM 变体(S3R8)的 GPIO33-37 默认按 Warn 处理（无法识别型号时），后续可按芯片 ID 精确识别后升级为 Error。
+
+### 验证 2026-06-28-1017：M5 项目/存储层（项目CRUD+对话记录+代码日志持久化）
+- **验证时间**：2026-06-28-1017
+- **验证对象**：M5 里程碑——项目文件夹持久化（project.json/conversation.jsonl/src/logs/）
+- **验证环境**：Windows 10，纯 Rust 文件 IO
+- **操作步骤**：
+  1. 实现 `project/model.rs`：Project/ProjectState(9态)/AutoMode/PinBlacklistSnapshot/RetryCounts(上限3)/ConversationMessage/StageLog；
+  2. 实现 `project/storage.rs`：ProjectStorage 按 PRD 3.4 结构 create/save/load/list/delete + append/load messages + write/read code + write stage log，含北京时间戳计算；
+  3. lib.rs 注册 11 个项目命令 + ProjectStorage State；
+  4. `cargo test --lib project` 全量验证。
+- **观察现象**：
+  - create_load_update_project：创建项目生成文件夹结构(src/build/logs/archive + project.json + conversation.jsonl)，状态更新持久化；
+  - append_load_messages：jsonl 对话记录追加/读取正确；
+  - write_read_code_and_log：主程序/测试桩代码读写 + 阶段日志写入；
+  - list_and_delete_projects：项目列表+删除；
+  - now_iso：北京时间戳格式 `2026-06-28T10:17:xx+08:00` 正确；
+  - 全量 23 个测试通过，无回归无警告。
+- **结论**：通过
+- **遗留问题**：无。存储层已为 M6 编排器提供完整的项目状态持久化支撑。
 
 ---
 
