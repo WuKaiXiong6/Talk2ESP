@@ -1,0 +1,74 @@
+/* 文件路径：src/components/CodeEditor.css */
+/* 文件作用：可编辑代码编辑器样式——行号 + 高亮覆盖 + 透明 textarea 同步滚动 */
+/* 最后更新时间：2026-06-28-1315 */
+
+.code-editor {
+  position: relative;
+  display: flex;
+  background: var(--color-bg-code);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-code);
+}
+
+.code-editor-gutter {
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
+  text-align: right;
+  color: #6a6a6a;
+  user-select: none;
+  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.code-editor-line-num { white-space: pre; }
+
+.code-editor-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: var(--space-3);
+  pointer-events: none;
+  overflow: auto;
+  white-space: pre;
+  color: var(--color-text-code);
+  background: transparent;
+  width: calc(100% - var(--gutter-width, 48px));
+  /* 让高亮层不拦截交互 */
+  z-index: 1;
+}
+
+.code-editor-highlight code {
+  font-family: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+.code-editor-input {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  margin: 0;
+  padding: var(--space-3);
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--color-text-code);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+  width: 100%;
+  tab-size: 2;
+}
+
+.code-editor-input::placeholder { color: #6a6a6a; }
+
+.code-editor-input::selection { background: rgba(74, 159, 212, 0.3); color: transparent; }

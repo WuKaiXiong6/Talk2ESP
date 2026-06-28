@@ -128,6 +128,91 @@ function AppInner() {
     setProgress((p) => ({ ...p, message: '正在终止…' }));
   };
 
+  // #17 用编辑后的代码重跑（跳过 AI 生成，直接进入编译→烧录→验证）
+  const rerunEditedCode = async (code: string) => {
+    if (!selectedPort) { notify.warning('请先选择设备'); return; }
+    if (code.trim() === generatedCode?.main_ino) {
+      notify.info('代码未修改', '代码与生成时一致，将正常重跑');
+    }
+    addLog('🔄 使用编辑后的代码重跑（跳过 AI 生成）');
+    // 构造 spec（复用当前需求）
+    const spec: RequirementSpec = {
+      project_name: 'talk2esp_project',
+      chip: selectedChip,
+      peripherals: [{ type: 'GPIO_OUT', pin: 2, behavior: requirement }],
+      expected_behavior: requirement,
+      test_harness_expectation: {
+        cases: [{ name: 'main', expect: 'TEST:PASS main' }],
+      },
+    };
+    stopFlagRef.current = false;
+    setRunning(true);
+    setLogs([]);
+    setOutcome(null);
+    setCurrentState('compiling');
+    setProgress({ percent: 30, message: '编译编辑后的代码…' });
+    setThinking('');
+    stageStartRef.current = { compiling: Date.now() };
+    try {
+      const project = await invoke<{ id: string }>('create_project', {
+        name: 'rerun_' + Date.now(), chip: selectedChip,
+      });
+      const ch = new Channel<PipelineEvent>();
+      ch.onmessage = (event) => {
+        if (event.kind === 'StateChanged') {
+          const prev = currentState;
+          if (prev && stageStartRef.current[prev]) {
+            setStageDurations((m) => ({ ...m, [prev]: Date.now() - stageStartRef.current[prev] }));
+          }
+          setCurrentState(event.data.state);
+          stageStartRef.current[event.data.state] = Date.now();
+          addLog(`▶ 状态: ${event.data.state}`);
+        } else if (event.kind === 'Progress') {
+          setProgress({ percent: event.data.percent, message: event.data.message });
+        } else if (event.kind === 'StageLog') {
+          addLog(`[${event.data.stage}] ${event.data.message}`);
+        } else if (event.kind === 'ToolOutput') {
+          setLogs((l) => [...l, `  ${event.data.line}`]);
+        } else if (event.kind === 'Retry') {
+          setRetryMap((m) => ({ ...m, [event.data.stage]: { attempt: event.data.attempt, max: event.data.max, reason: event.data.reason } }));
+          setFailReasonMap((m) => ({ ...m, [event.data.stage]: event.data.reason }));
+          addLog(`↻ 重试 ${event.data.stage} (${event.data.attempt}/${event.data.max}): ${event.data.reason}`);
+        } else if (event.kind === 'Done') {
+          setProgress({ percent: event.data.success ? 100 : 0, message: event.data.summary });
+          if (!event.data.success) setFailReasonMap((m) => ({ ...m, [currentState]: event.data.summary }));
+          addLog(`■ 完成: ${event.data.summary}`);
+        }
+      };
+      const result = await invoke<PipelineOutcome>('run_full_pipeline', {
+        spec, port: selectedPort, projectId: project.id, onEvent: ch,
+        skipCodingWithCode: code,
+      });
+      setOutcome(result);
+      setRunHistory((h) => [{
+        id: project.id, requirement: '(编辑重跑)', chip: selectedChip, port: selectedPort,
+        success: result.success, summary: result.summary, timestamp: new Date().toISOString(),
+      }, ...h].slice(0, 20));
+      if (result.success) notify.success('🎉 编辑后代码运行成功！', '');
+      else notify.error('编辑后代码运行未完成', result.summary);
+    } catch (e) {
+      addLog(`重跑错误: ${e}`);
+      notify.error('重跑异常', String(e));
+    }
+    setRunning(false);
+  };
+
+  // #86 代码导出为 .ino 文件
+  const exportCode = (code: string) => {
+    const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `main_${Date.now()}.ino`;
+    a.click();
+    URL.revokeObjectURL(url);
+    notify.success('代码已导出', 'main.ino');
+  };
+
   // 一键全自动开发：需求 → 流水线
   const runAutoPipeline = async () => {
     if (!requirement.trim()) { addLog('请先输入需求'); return; }
@@ -327,6 +412,9 @@ function AppInner() {
                 onRefreshDevices={refreshDevices} onPort={setSelectedPort} onChip={setSelectedChip}
                 onRequirement={setRequirement} onChat={chatWithAi} onRun={runAutoPipeline} onStop={stopPipeline}
                 onGoSettings={() => setView('settings')}
+                onRerunEdited={rerunEditedCode}
+                onExportCode={exportCode}
+                onRegenerate={chatWithAi}
               />
             )}
             {view === 'devices' && (

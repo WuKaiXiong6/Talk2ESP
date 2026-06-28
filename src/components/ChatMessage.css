@@ -1,0 +1,69 @@
+/* 文件路径：src/components/ChatMessage.css */
+/* 文件作用：对话消息样式——头像/Markdown/代码块/操作按钮 */
+/* 最后更新时间：2026-06-28-1310 */
+
+.chat-message {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-2);
+}
+
+.chat-message-user { background: var(--color-primary-light); }
+.chat-message-assistant { background: var(--color-bg-subtle); }
+
+.chat-message-avatar {
+  font-size: var(--font-size-lg);
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.chat-message-body { flex: 1; min-width: 0; }
+
+.chat-message-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.chat-message-role { font-weight: 600; font-size: var(--font-size-sm); color: var(--color-primary); }
+.chat-message-time { font-size: var(--font-size-xs); color: var(--color-text-muted); font-family: var(--font-mono); }
+.chat-message-actions { margin-left: auto; display: flex; gap: var(--space-1); }
+
+.chat-message-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+}
+.chat-message-btn:hover { opacity: 1; background: var(--color-bg-hover); }
+
+.chat-message-text { white-space: pre-wrap; word-break: break-word; font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); }
+
+/* Markdown 渲染区 */
+.chat-message-content { font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); color: var(--color-text-primary); }
+.chat-message-content p { margin: var(--space-1) 0; }
+.chat-message-content h1, .chat-message-content h2, .chat-message-content h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--font-size-base); }
+.chat-message-content ul, .chat-message-content ol { margin: var(--space-1) 0; padding-left: var(--space-5); }
+.chat-message-content li { margin: 2px 0; }
+.chat-message-content code.inline-code {
+  background: var(--color-bg-hover);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+.chat-message-content blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: var(--space-2);
+  margin: var(--space-1) 0;
+  color: var(--color-text-secondary);
+}
+.chat-message-content table { border-collapse: collapse; margin: var(--space-1) 0; }
+.chat-message-content th, .chat-message-content td { border: 1px solid var(--color-border); padding: var(--space-1) var(--space-2); }

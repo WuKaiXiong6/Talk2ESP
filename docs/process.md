@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1300
+最后更新时间：2026-06-28-1315
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -556,6 +556,45 @@
   - `tsc --noEmit` 通过；`npm run build` 成功（69 模块，280KB JS）。
 - **结论**：部分通过（自动化全通过；GUI 连接测试/引脚图/工具链检查现象待人工验证）
 - **遗留问题**：①LLM 连接测试与工具链检查需真实环境验证结果准确性；②引脚图 Octal 变体当前归为警告（受后端 pin_level 限制），可视化已用虚线区分。
+
+### 决策 2026-06-28-1315：核心逻辑增量改造（流式/编辑重跑/需求确认书）+ 依赖引入
+- **时间**：2026-06-28-1315
+- **背景**：阶段H 的 #17/#73/#75 触及 pipeline.rs/openai_compat.rs 核心逻辑，需保证既有全自动闭环行为不变。同时引入 react-markdown/futures-util/reqwest stream 特性。
+- **决策**：
+  1. **#73 流式**：openai_compat 新增 `chat_stream`（stream:true + SSE 解析），`llm_chat_stream` 命令经 Channel 推 chunk；既有 `llm_chat`/`chat_raw` 完全不变；
+  2. **#17 编辑重跑**：`PipelineConfig` 增 `skip_coding_with_code: Option<String>`（Default=None 保持既有行为），pipeline coding 阶段判断此字段跳过 AI 生成；`run_full_pipeline` 命令增可选 `skip_coding_with_code` 参数；
+  3. **#75 需求确认书**：prompts.rs 新增 `build_requirement_messages` + `llm_draft_requirement` 命令；流水线不强制经过此步（默认仍直接 generate_code）；
+  4. 依赖：前端 react-markdown+remark-gfm（Markdown），后端 futures-util（stream）+ reqwest stream 特性。
+- **备选方案**：①核心逻辑只读降级——但高优无法落地；②为流式单独新建 provider——重复代码多。
+- **影响**：`cargo test --lib` 26 测试全过 0 回归，证明默认行为不变；新增能力均为可选参数/独立命令，既有调用方不受影响。
+- **回滚条件或后续观察点**：若流式在某些 LLM 供应商不兼容（非标准 SSE），可回退用 llm_chat；编辑重跑需人工验证跳过生成后编译/烧录/验证链路正常。
+
+### 验证 2026-06-28-1315：阶段H AI对话与代码编辑（ux-ai-code）— #17/#73/#74/#75/#76/#77/#78/#79/#81/#82/#83/#85/#86
+- **验证时间**：2026-06-28-1315
+- **验证对象**：编辑重跑 + 流式 + 上下文 + 需求确认书 + Markdown + 复制重生成 + 讲解 + 编辑器 + 引脚高亮 + diff + 测试桩 + 导出
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7 + Rust reqwest stream
+- **实现内容**：
+  1. **#17 代码可编辑重跑**：CodeEditor 组件（textarea+高亮覆盖+行号+Tab空格），编辑后 `run_full_pipeline` 传 `skip_coding_with_code` 跳过 AI 生成直接编译；
+  2. **#73 流式输出**：后端 `chat_stream` SSE 解析 + `llm_chat_stream` 命令；
+  3. **#74 对话上下文**：前端组装多轮 messages 传入 llm_chat（后端已支持 Vec<ChatMessage>）；
+  4. **#75 需求确认书**：`build_requirement_messages` prompt + `llm_draft_requirement` 命令；
+  5. **#76 Markdown 渲染**：ChatMessage 组件用 react-markdown+remark-gfm，代码块经 CodeBlock 高亮；
+  6. **#77 复制/重新生成**：ChatMessage 每条带复制按钮，AI 末条带重新生成；
+  7. **#78 对话历史持久化**：后端 load/append_messages 既有，前端接通；
+  8. **#81 专业代码编辑器**：CodeEditor（行号+高亮+Tab）；
+  9. **#83 diff**：CodeDiff 组件自研 LCS 算法行级增删着色；
+  10. **#85 测试桩代码展示**：CodeBlock 复用；
+  11. **#86 代码导出**：导出 .ino 文件。
+- **核心逻辑改动**（默认行为不变）：
+  - `pipeline.rs`：PipelineConfig 增 `skip_coding_with_code`（Default=None），coding 阶段条件分支；
+  - `openai_compat.rs`：新增 `chat_stream` 方法（既有 chat_raw 不变）；
+  - `prompts.rs`：新增 `build_requirement_messages`；
+  - `lib.rs`：`run_full_pipeline` 增可选参数，新增 `llm_chat_stream`/`llm_draft_requirement` 命令。
+- **观察现象**：
+  - `cargo build` 通过；`cargo test --lib` 26 全过 1 ignored（0 回归，证明默认行为不变）；
+  - `tsc --noEmit` 通过；`npm run build` 成功（74 模块，444KB JS）。
+- **结论**：部分通过（自动化全通过；GUI 编辑器/Markdown/diff/重跑现象待人工验证）
+- **遗留问题**：①#79 AI 讲解代码、#82 引脚高亮悬浮、#84 格式化检查作为轻量增强未深度实现，留待后续；②流式与编辑重跑需真实 LLM/硬件验证。
 
 ---
 

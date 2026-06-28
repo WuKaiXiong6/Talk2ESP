@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/ai/prompts.rs
 // 文件作用：各 AI 调用阶段的 Prompt 模板
-// 最后更新时间：2026-06-28-1000
+// 最后更新时间：2026-06-28-1305
 
 use crate::ai::{ChatMessage, RequirementSpec};
 
@@ -79,6 +79,34 @@ pub fn build_judge_messages(serial_output: &str, expectation: &str) -> Vec<ChatM
 {serial_output}
 
 判定规则：串口输出中应包含预期的 TEST:PASS 标记，且无 TEST:FAIL。若全部预期用例 PASS 则 verdict=pass。"#
+    );
+    vec![ChatMessage::system(SYSTEM_PROMPT), ChatMessage::user(user)]
+}
+
+/// #75 构建需求确认书草稿的消息序列：将自然语言转为结构化 RequirementSpec
+/// 此为新增能力，流水线默认仍直接调 build_generate_code_messages，不强制经过此步
+pub fn build_requirement_messages(natural_language: &str, chip: &str) -> Vec<ChatMessage> {
+    let user = format!(
+        r#"请将以下自然语言需求转为结构化的需求确认书。返回严格 JSON（不要 markdown 包裹），格式如下：
+{{
+  "project_name": "项目名（英文短名）",
+  "chip": "{chip}",
+  "peripherals": [
+    {{ "type": "外设类型(GPIO_OUT/GPIO_IN/I2C/SPI/PWM/UART/ADC)", "pin": 引脚号, "behavior": "行为描述" }}
+  ],
+  "expected_behavior": "整体预期行为",
+  "test_harness_expectation": {{
+    "cases": [ {{ "name": "用例名", "expect": "TEST:PASS 用例名" }} ]
+  }}
+}}
+
+自然语言需求：
+{natural_language}
+
+要求：
+- 引脚须避开 {chip} 的黑名单（Flash/PSRAM/VDD_SPI）；
+- 测试用例至少1个，expect 形如 TEST:PASS <name>；
+- 仅返回 JSON，不要解释。"#
     );
     vec![ChatMessage::system(SYSTEM_PROMPT), ChatMessage::user(user)]
 }

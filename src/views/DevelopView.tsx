@@ -8,10 +8,13 @@ import type {
 } from '../types';
 import { Button, Badge } from '../components/ui';
 import { CodeBlock } from '../components/CodeBlock';
+import { CodeEditor } from '../components/CodeEditor';
+import { CodeDiff } from '../components/CodeDiff';
 import {
   PipelineTimeline, deriveStageStatuses,
 } from '../components/PipelineTimeline';
 import { RequirementExamples } from '../components/RequirementExamples';
+import { ChatMessage } from '../components/ChatMessage';
 
 /// 开发视图属性
 export interface DevelopViewProps {
@@ -47,6 +50,12 @@ export interface DevelopViewProps {
   onRun: () => void;
   onStop: () => void;
   onGoSettings: () => void;
+  // #17 用编辑后的代码重跑
+  onRerunEdited: (code: string) => void;
+  // #86 代码导出
+  onExportCode: (code: string) => void;
+  // #77 重新生成
+  onRegenerate?: () => void;
 }
 
 /// 日志/对话 子标签页
@@ -58,10 +67,18 @@ export function DevelopView(props: DevelopViewProps) {
     progress, generatedCode, llmConfigured, chatHistory, logs, outcome, logEndRef,
     retryMap, stageDurations, failReasonMap, llmStats, thinking, runHistory,
     onRefreshDevices, onPort, onChip, onRequirement, onChat, onRun, onStop, onGoSettings,
+    onRerunEdited, onExportCode, onRegenerate,
   } = props;
 
   // #22 对话区/日志区分离
   const [msgTab, setMsgTab] = useState<MessageTab>('chat');
+  // #17 代码编辑模式
+  const [editing, setEditing] = useState(false);
+  const [editedCode, setEditedCode] = useState('');
+  // #83 diff 显示
+  const [showDiff, setShowDiff] = useState(false);
+  // 最近一次 AI 修复前的代码（用于 diff）；首版生成时为空
+  const lastFixedCode = '';
 
   // #13/#14 计算时间线阶段状态
   const stages = deriveStageStatuses(
@@ -182,8 +199,48 @@ export function DevelopView(props: DevelopViewProps) {
               AI 生成的代码
               {generatedCode.explanation && <span className="code-explain">— {generatedCode.explanation}</span>}
             </h4>
-            {/* #16 代码语法高亮 */}
-            <CodeBlock code={generatedCode.main_ino} language="arduino" maxHeight="320px" title="main.ino" />
+            {/* #16 代码语法高亮 + #17 可编辑重跑 + #81 编辑器 */}
+            {editing ? (
+              <div className="code-edit-area">
+                <CodeEditor
+                  value={editedCode}
+                  onChange={setEditedCode}
+                  language="arduino"
+                  minHeight="320px"
+                  placeholder="可在此编辑代码后重跑（跳过 AI 生成）"
+                />
+                <div className="code-edit-actions">
+                  <Button variant="primary" size="sm" onClick={() => onRerunEdited(editedCode)} disabled={running}>
+                    🔄 用编辑后的代码重跑
+                  </Button>
+                  {/* #83 diff 对比 */}
+                  {lastFixedCode && (
+                    <Button variant="secondary" size="sm" onClick={() => setShowDiff((v) => !v)}>
+                      {showDiff ? '隐藏' : '查看'} diff
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setEditedCode(generatedCode.main_ino); }}>
+                    取消编辑
+                  </Button>
+                </div>
+                {/* #83 AI 修复前后 diff */}
+                {showDiff && lastFixedCode && (
+                  <CodeDiff oldCode={lastFixedCode} newCode={editedCode} title="AI 修复前 → 编辑后" />
+                )}
+              </div>
+            ) : (
+              <>
+                <CodeBlock code={generatedCode.main_ino} language="arduino" maxHeight="320px" title="main.ino" />
+                <div className="code-edit-actions">
+                  {/* #17 进入编辑模式 */}
+                  <Button variant="secondary" size="sm" onClick={() => { setEditing(true); setEditedCode(generatedCode.main_ino); }} disabled={running}>
+                    ✏ 编辑代码
+                  </Button>
+                  {/* #86 代码导出 */}
+                  <Button variant="ghost" size="sm" onClick={() => onExportCode(generatedCode.main_ino)}>📥 导出 .ino</Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -209,11 +266,9 @@ export function DevelopView(props: DevelopViewProps) {
             chatHistory.length === 0 ? (
               <div className="empty-inline">暂无对话，点击「与 AI 对话澄清」开始</div>
             ) : (
+              // #76 Markdown 渲染 + #77 复制/重新生成
               chatHistory.map((m, i) => (
-                <div key={`msg-${i}`} className={`msg msg-${m.role}`}>
-                  <span className="msg-role">{m.role === 'user' ? '我' : 'AI'}:</span>
-                  <span className="msg-content">{m.content}</span>
-                </div>
+                <ChatMessage key={`msg-${i}`} message={m} onRegenerate={m.role === 'assistant' && i === chatHistory.length - 1 ? onRegenerate : undefined} />
               ))
             )
           ) : (

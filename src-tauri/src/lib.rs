@@ -176,6 +176,37 @@ async fn llm_chat(messages: Vec<ChatMessage>) -> Result<String, String> {
     provider.chat(messages).await
 }
 
+/// #73 流式对话：增量推送内容片段经 Channel，返回完整文本
+/// 注意：既有 llm_chat（非流式）行为不变，此为新增能力
+#[tauri::command]
+async fn llm_chat_stream(
+    messages: Vec<ChatMessage>,
+    on_chunk: Channel<String>,
+) -> Result<String, String> {
+    let provider = make_provider()?;
+    provider
+        .chat_stream(messages, |chunk| {
+            // 推送每个增量片段到前端；始终返回 true（不提前终止）
+            let _ = on_chunk.send(chunk.to_string());
+            true
+        })
+        .await
+}
+
+/// #75 需求确认书草稿：将自然语言转为结构化 RequirementSpec（不强制，流水线默认仍直接生成代码）
+#[tauri::command]
+async fn llm_draft_requirement(
+    natural_language: String,
+    chip: String,
+) -> Result<RequirementSpec, String> {
+    let provider = make_provider()?;
+    let messages = ai::prompts::build_requirement_messages(&natural_language, &chip);
+    let text = provider.chat(messages).await?;
+    // 解析为 RequirementSpec
+    serde_json::from_str::<RequirementSpec>(&text)
+        .map_err(|e| format!("解析需求确认书失败: {e}; 原文: {}", &text[..text.len().min(300)]))
+}
+
 /// M3：根据需求确认书生成代码
 #[tauri::command]
 async fn llm_generate_code(spec: RequirementSpec) -> Result<GeneratedCode, String> {
@@ -464,16 +495,19 @@ fn check_toolchain_impl() -> ToolchainStatus {
 }
 
 /// M6：运行全自动流水线（需求确认书 → 代码 → 编译 → 烧录 → 验证）
+/// #17 skip_coding_with_code 可选：传入则跳过 AI 生成，用用户编辑后的代码
 #[tauri::command]
 async fn run_full_pipeline(
     spec: RequirementSpec,
     port: String,
     project_id: String,
     on_event: Channel<PipelineEvent>,
+    skip_coding_with_code: Option<String>,
 ) -> Result<PipelineOutcome, String> {
     // 先检查 LLM 是否已配置，未配置给明确引导
     let settings = settings::load_settings();
-    if !settings::is_llm_configured(&settings) {
+    // #17 若跳过 AI 生成，则不强制要求 LLM 配置
+    if skip_coding_with_code.is_none() && !settings::is_llm_configured(&settings) {
         return Err("LLM 未配置：请先到「设置」界面填写 Base URL、API Key、模型名".into());
     }
     let provider = Arc::new(make_provider()?);
@@ -483,6 +517,7 @@ async fn run_full_pipeline(
         spec,
         port,
         auto_mode: settings.automation.mode == "full",
+        skip_coding_with_code,
     };
     run_pipeline(storage, provider, config, move |event| {
         let _ = on_event.send(event);
@@ -528,6 +563,8 @@ pub fn run() {
             compile_sketch,
             flash_sketch,
             llm_chat,
+            llm_chat_stream,
+            llm_draft_requirement,
             llm_generate_code,
             llm_diagnose,
             llm_judge,

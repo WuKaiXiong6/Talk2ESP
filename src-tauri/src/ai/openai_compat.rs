@@ -187,6 +187,97 @@ impl OpenAiCompatProvider {
         serde_json::from_str(cleaned)
             .map_err(|e| format!("解析 JSON 失败: {e}; 原文前300字: {}", &cleaned[..cleaned.len().min(300)]))
     }
+
+    /// #73 流式 chat：以 SSE 方式增量推送内容片段，回调返回 false 可提前终止
+    /// 注意：此方法为新增能力，不影响既有 chat_raw（非流式）行为
+    pub async fn chat_stream<F>(&self, messages: Vec<ChatMessage>, mut on_chunk: F) -> Result<String, String>
+    where
+        F: FnMut(&str) -> bool + Send,
+    {
+        let url = format!("{}/chat/completions", self.config.base_url.trim_end_matches('/'));
+        let ser_messages: Vec<ChatMessageSer> = messages
+            .iter()
+            .map(|m| ChatMessageSer { role: &m.role, content: &m.content })
+            .collect();
+        // 流式请求体：增加 stream: true
+        #[derive(Serialize)]
+        struct StreamRequest<'a> {
+            model: &'a str,
+            messages: Vec<ChatMessageSer<'a>>,
+            max_tokens: u32,
+            stream: bool,
+        }
+        let req = StreamRequest {
+            model: &self.config.model,
+            messages: ser_messages,
+            max_tokens: self.config.max_tokens,
+            stream: true,
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.config.api_key)
+            .json(&req)
+            .timeout(std::time::Duration::from_secs(180))
+            .send()
+            .await
+            .map_err(|e| format!("LLM 流式请求失败(网络): {e}"))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            let snippet = if text.len() > 500 { &text[..500] } else { &text };
+            return Err(format!("LLM 流式返回 {status}: {snippet}"));
+        }
+
+        // 逐行读取 SSE：每行 data: {json}，以 [DONE] 结束
+        let mut full = String::new();
+        let mut stream = resp.bytes_stream();
+        use futures_util::StreamExt;
+        let mut buf = String::new();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|e| format!("读取流式 chunk 失败: {e}"))?;
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            // 按行处理
+            while let Some(idx) = buf.find('\n') {
+                let line: String = buf.drain(..=idx).collect();
+                let line = line.trim();
+                if line.is_empty() || !line.starts_with("data:") {
+                    continue;
+                }
+                let data = line["data:".len()..].trim();
+                if data == "[DONE]" {
+                    return Ok(full);
+                }
+                // 解析增量 delta
+                #[derive(Deserialize)]
+                struct StreamChunk {
+                    choices: Vec<StreamChoice>,
+                }
+                #[derive(Deserialize)]
+                struct StreamChoice {
+                    delta: StreamDelta,
+                }
+                #[derive(Deserialize)]
+                struct StreamDelta {
+                    content: Option<String>,
+                }
+                if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data) {
+                    if let Some(choice) = parsed.choices.into_iter().next() {
+                        if let Some(content) = choice.delta.content {
+                            full.push_str(&content);
+                            // 回调返回 false 则提前终止
+                            if !on_chunk(&content) {
+                                return Ok(full);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(full)
+    }
 }
 
 #[async_trait]

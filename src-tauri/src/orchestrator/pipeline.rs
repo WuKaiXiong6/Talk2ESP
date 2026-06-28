@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/orchestrator/pipeline.rs
 // 文件作用：流水线编排核心，状态机推进需求→代码→编译→烧录→验证，含失败重试
-// 最后更新时间：2026-06-28-1018
+// 最后更新时间：2026-06-28-1310
 
 use crate::ai::openai_compat::OpenAiCompatProvider;
 use crate::ai::{GeneratedCode, LlmProvider, RequirementSpec, Verdict};
@@ -43,6 +43,28 @@ pub struct PipelineConfig {
     pub port: String,
     /// 是否全自动（false=分步，需外部逐步推进；true=全自动跑到底）
     pub auto_mode: bool,
+    /// #17 跳过 AI 生成阶段，直接使用用户编辑后的代码进入编译
+    /// None=默认走 AI 生成（既有行为）；Some(code)=跳过生成，用此代码
+    pub skip_coding_with_code: Option<String>,
+}
+
+impl Default for PipelineConfig {
+    fn default() -> Self {
+        // 默认值保持既有行为：走 AI 生成
+        Self {
+            project_id: String::new(),
+            spec: RequirementSpec {
+                project_name: String::new(),
+                chip: String::new(),
+                peripherals: Vec::new(),
+                expected_behavior: String::new(),
+                test_harness_expectation: crate::ai::TestHarnessExpectation { cases: Vec::new() },
+            },
+            port: String::new(),
+            auto_mode: true,
+            skip_coding_with_code: None,
+        }
+    }
 }
 
 /// 流水线结果
@@ -86,21 +108,34 @@ where
     let mut retry = RetryCounts::default();
     let pipeline_start = std::time::Instant::now();
 
-    // ========== Coding：AI 生成代码 ==========
+    // ========== Coding：AI 生成代码（或使用用户编辑后的代码）==========
     let stage_start = std::time::Instant::now();
     emit(&mut on_event, PipelineEvent::StateChanged { state: "coding".into() });
     emit(&mut on_event, PipelineEvent::Progress { percent: 10, message: "AI 正在理解需求并生成代码…".into() });
-    emit(&mut on_event, PipelineEvent::StageLog {
-        stage: "coding".into(),
-        message: "AI 生成代码中（glm-5.2 是推理模型，可能需要 20-40 秒思考）…".into(),
-    });
 
-    let generated = provider.generate_code(&config.spec).await.map_err(|e| {
-        format!("代码生成失败: {e}")
-    })?;
+    // #17 若提供了用户编辑后的代码，则跳过 AI 生成，直接使用
+    let generated = if let Some(edited_code) = &config.skip_coding_with_code {
+        emit(&mut on_event, PipelineEvent::StageLog {
+            stage: "coding".into(),
+            message: "使用用户编辑后的代码（跳过 AI 生成）".into(),
+        });
+        GeneratedCode {
+            main_ino: edited_code.clone(),
+            test_harness_ino: String::new(),
+            explanation: "用户编辑后的代码".to_string(),
+        }
+    } else {
+        emit(&mut on_event, PipelineEvent::StageLog {
+            stage: "coding".into(),
+            message: "AI 生成代码中（glm-5.2 是推理模型，可能需要 20-40 秒思考）…".into(),
+        });
+        provider.generate_code(&config.spec).await.map_err(|e| {
+            format!("代码生成失败: {e}")
+        })?
+    };
     emit(&mut on_event, PipelineEvent::StageLog {
         stage: "coding".into(),
-        message: format!("代码生成完成，耗时 {:.1}s", stage_start.elapsed().as_secs_f64()),
+        message: format!("代码就绪，耗时 {:.1}s", stage_start.elapsed().as_secs_f64()),
     });
 
     // 推送生成的代码与说明，让用户看到 AI 产出
