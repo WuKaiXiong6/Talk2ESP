@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1620
+最后更新时间：2026-06-29-0057
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -653,7 +653,7 @@
 
 10 个阶段（A~J）全部完成，覆盖 docs/UX-OPTIMIZATION.md 100 条建议。每阶段独立分支（ux-infra→ux-help），均通过 `tsc`+`npm build`+`cargo test`(26过0回归) 验证门禁，核心逻辑（pipeline/LLM/serial）改造均保持默认行为不变。
 
-**未深度实现项**（已在对应阶段记录遗留）：#57 项目标签、#79 AI讲解代码、#82 引脚高亮悬浮、#84 格式化检查、#94 自动更新、#38 多串口多标签、#39 数据图表、#50 多设备并行、#80 多模型对比、#93 i18n。
+**未深度实现项**（已在对应阶段记录遗留）：#57 项目标签、#79 AI讲解代码、#82 引脚高亮悬浮、#84 格式化检查、#94 自动更新（版本号底座已完成，远程检查待引入 updater 插件）、#38 多串口多标签、#39 数据图表、#50 多设备并行、#80 多模型对比、#93 i18n。
 
 **待人工验证**：所有 GUI 交互现象（各阶段均标注「待人工验证」），需运行 `npm run tauri dev` 逐一确认。
 
@@ -687,6 +687,37 @@
   - `tsc --noEmit` 通过；`npm run build` 成功（77 模块，456KB JS）。
 - **结论**：部分通过（自动化全通过；GUI 确认门禁/复制/分页/别名/历史/检查面板现象待人工验证）
 - **遗留问题**：①烧录确认门禁需真实流水线验证暂停/继续；②格式检查为启发式，非完整语法分析，可能有误报。
+
+### 验证 2026-06-29-0057：补全剩余可行项第二批（ux-followup 分支）— #71/#49/#94
+- **验证时间**：2026-06-29-0057
+- **验证对象**：日志/数据保留策略与一键清理 + 设备固件信息读取 + 应用版本号后端化（自动更新基础）
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7 + Rust（Tauri 2.11.3）
+- **实现内容**：
+  1. **#71 日志与数据管理**：
+     - `settings/mod.rs` 新增 `DataManagementSettings { max_projects, log_retention_days }` 字段，`#[serde(default)]` 保证旧 settings.json 兼容（默认 0=不限，保持既有"不自动清理"行为）；
+     - `project/storage.rs` 新增 `cleanup_old_data(log_retention_days)`：按文件 mtime 删除超期日志（仅 `projects/<id>/logs/`），返回 `(已删除日志数, 当前项目数)`；
+     - `lib.rs` 新增 `cleanup_old_data` 命令；
+     - 前端 `types/index.ts` Settings 增 `data_management` 字段；`SettingsView` 新增「日志与数据管理」区块（项目数量上限/日志保留天数/立即清理按钮），项目数超上限时弹警告。
+  2. **#49 设备固件信息读取**：
+     - `lib.rs` 新增 `read_firmware_info(port)` 命令，调用 `py -m esptool image_info` 读取已烧录固件元信息（失败时仅返回首行错误，避免噪声）；
+     - 前端 `DevicesView` 设备卡片新增「📋 固件」按钮，结果以通知弹出（截断 200 字符避免长文遮挡）。
+  3. **#94 应用版本号后端化（自动更新基础）**：
+     - `lib.rs` 新增 `get_app_version` 命令，返回 `env!("CARGO_PKG_VERSION")`；
+     - 前端 `App.tsx` 初始化时调用 `get_app_version` 替换硬编码 `APP_VERSION='0.1.0'`，保留 fallback；
+     - 为后续接入 `tauri-plugin-updater` 远程版本对比奠定基础（本次不引入新依赖）。
+- **核心逻辑边界**（默认行为不变）：
+  - 数据清理仅当用户主动点「立即清理」或后续接入「打开应用时自动清理」时才执行；默认 `log_retention_days=0`（不限）；
+  - 固件信息读取为独立命令，不影响烧录/编译/串口任何既有流程；
+  - 版本号变更仅显示层，不影响业务逻辑。
+- **观察现象**：
+  - `tsc --noEmit` 通过；
+  - `npm run build` 成功（331 模块，458KB JS / 55KB CSS）；
+  - `cargo test --lib -- --test-threads=1` 26 测试全过 1 ignored（0 回归）；并行运行偶发 `compile_blink_s3_success` 与 `flash_blink_to_com8_success` 因共用 arduino-cli 编译缓存冲突，单线程稳定通过，属既有测试设计问题，与本次改动无关。
+- **结论**：部分通过（自动化全通过；GUI「立即清理日志/固件按钮/版本号显示」现象待人工运行 `npm run tauri dev` 确认）。
+- **遗留问题**：
+  1. #94 真正的远程版本检查（拉取 GitHub Releases / OTA）需引入 `tauri-plugin-updater`，按 AGENTS.md 新增依赖需用户确认，本次先把版本号读取后端化作为底座；
+  2. #71 项目数量上限当前仅"超出提示"，自动归档/删除未做（避免误删用户数据）；
+  3. #49 image_info 在未烧录或加密固件下会失败，目前以错误首行简单返回，可后续解析结构化字段。
 
 ---
 

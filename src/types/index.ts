@@ -1,6 +1,6 @@
 // 文件路径：src/types/index.ts
 // 文件作用：前端类型定义，与 Rust 后端结构对齐
-// 最后更新时间：2026-06-28-1037
+// 最后更新时间：2026-06-29-0057
 
 export interface PortInfo {
   name: string;
@@ -146,6 +146,11 @@ export interface Settings {
     arduino_cli_path: string;
     default_baud: number;
     verbose_log: boolean;
+  };
+  /// #71 日志与数据管理（serde default 兼容旧设置文件）
+  data_management: {
+    max_projects: number;
+    log_retention_days: number;
   };
 }
 

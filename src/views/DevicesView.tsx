@@ -1,6 +1,6 @@
 // 文件路径：src/views/DevicesView.tsx
-// 文件作用：设备管理视图——设备卡片化 + 详情 + 热插拔感知 + 识别失败引导 + 占用冲突 + 连接测试 + 驱动检测
-// 最后更新时间：2026-06-28-1250
+// 文件作用：设备管理视图——设备卡片化 + 详情 + 热插拔感知 + 识别失败引导 + 占用冲突 + 连接测试 + 驱动检测 + 固件信息(#49)
+// 最后更新时间：2026-06-29-0057
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -110,6 +110,19 @@ export function DevicesView(props: DevicesViewProps) {
     setTesting(null);
   };
 
+  // #49 读取设备固件信息
+  const [readingFw, setReadingFw] = useState<string | null>(null);
+  const readFirmware = async (port: string) => {
+    setReadingFw(port);
+    try {
+      const info = await invoke<string>('read_firmware_info', { port });
+      notify.info(`${port} 固件信息`, info.slice(0, 200));
+    } catch (e) {
+      notify.error('固件信息读取失败', String(e));
+    }
+    setReadingFw(null);
+  };
+
   return (
     <div className="devices-view">
       <div className="view-header">
@@ -212,6 +225,10 @@ export function DevicesView(props: DevicesViewProps) {
               <div className="device-card-actions">
                 <Button variant="secondary" size="sm" onClick={() => testConnection(d.port)} loading={testing === d.port}>
                   🔗 测试连接
+                </Button>
+                {/* #49 读取固件信息 */}
+                <Button variant="ghost" size="sm" onClick={() => readFirmware(d.port)} loading={readingFw === d.port}>
+                  📋 固件
                 </Button>
                 <Button variant="primary" size="sm" onClick={() => { onSelect(d.port, d.chip); onGoDevelop(); }} disabled={!d.detected}>
                   选为开发设备

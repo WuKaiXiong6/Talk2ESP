@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/settings/mod.rs
-// 文件作用：用户设置模块，持久化到 ~/.talk2esp/settings.json，含 LLM/自动化/黑名单/工具链配置
-// 最后更新时间：2026-06-28-1845
+// 文件作用：用户设置模块，持久化到 ~/.talk2esp/settings.json，含 LLM/自动化/黑名单/工具链/数据管理配置
+// 最后更新时间：2026-06-29-0057
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -17,6 +17,9 @@ pub struct Settings {
     pub pin_blacklist: PinBlacklistSettings,
     /// 工具链/高级
     pub toolchain: ToolchainSettings,
+    /// #71 日志与数据管理（新增字段，serde default 保证旧设置兼容）
+    #[serde(default)]
+    pub data_management: DataManagementSettings,
 }
 
 /// LLM 配置
@@ -66,6 +69,15 @@ pub struct ToolchainSettings {
     pub verbose_log: bool,
 }
 
+/// #71 日志与数据管理
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct DataManagementSettings {
+    /// 项目保留数量上限（0=不限），超出时提示清理
+    pub max_projects: u32,
+    /// 日志保留天数（0=不限），超出时自动清理 logs/
+    pub log_retention_days: u32,
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -90,6 +102,11 @@ impl Default for Settings {
                 arduino_cli_path: String::new(),
                 default_baud: 115200,
                 verbose_log: false,
+            },
+            // #71 默认不限（保持既有行为：不自动清理）
+            data_management: DataManagementSettings {
+                max_projects: 0,
+                log_retention_days: 0,
             },
         }
     }

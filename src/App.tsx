@@ -1,6 +1,6 @@
 // 文件路径：src/App.tsx
 // 文件作用：Talk2ESP 主界面——组合各视图，管理全局状态与流水线编排
-// 最后更新时间：2026-06-28-1235
+// 最后更新时间：2026-06-29-0057
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
@@ -23,7 +23,8 @@ import './App.css';
 
 type View = 'develop' | 'devices' | 'projects' | 'monitor' | 'settings' | 'help';
 
-const APP_VERSION = '0.1.0';
+// #94 版本号从后端 CARGO_PKG_VERSION 拉取（fallback 用包内默认）
+const APP_VERSION_FALLBACK = '0.1.0';
 
 function AppInner() {
   const theme = useTheme();
@@ -65,12 +66,15 @@ function AppInner() {
   const stageStartRef = useRef<Record<string, number>>({});
   const logEndRef = useRef<HTMLDivElement>(null);
   const stopFlagRef = useRef<boolean>(false);
+  // #94 应用版本号（从后端 CARGO_PKG_VERSION 拉取）
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION_FALLBACK);
 
-  // 初始化：扫描设备 + 加载芯片列表 + 检查 LLM 配置
+  // 初始化：扫描设备 + 加载芯片列表 + 检查 LLM 配置 + 拉取版本号
   useEffect(() => {
     refreshDevices();
     invoke<string[]>('list_chips').then(setChips).catch(() => {});
     invoke<boolean>('is_llm_configured').then(setLlmConfigured).catch(() => {});
+    invoke<string>('get_app_version').then(setAppVersion).catch(() => {});
   }, []);
 
   // 日志自动滚动
@@ -455,7 +459,7 @@ function AppInner() {
             ) : (
               <span className="header-info" title="LLM 未配置"><StatusDot state="error" label="未配置" /></span>
             )}
-            <span className="header-version">v{APP_VERSION}</span>
+            <span className="header-version">v{appVersion}</span>
             {running && <Badge tone="info" className="header-running">运行中 {progress.percent}%</Badge>}
             {/* #3 主题切换 + #10 字号调节 */}
             <ThemeToggle

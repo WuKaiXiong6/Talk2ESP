@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/lib.rs
 // 文件作用：Talk2ESP 应用入口，注册 Tauri 命令与插件、管理全局状态
-// 最后更新时间：2026-06-28-0339
+// 最后更新时间：2026-06-29-0057
 
 pub mod device;
 pub mod toolchain;
@@ -392,6 +392,39 @@ fn import_project(
     storage.import_project(&zip_bytes)
 }
 
+/// #71 清理旧数据：按日志保留天数删除超期日志，返回 (删除日志数, 项目数)
+#[tauri::command]
+fn cleanup_old_data(
+    log_retention_days: u32,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<(usize, usize), String> {
+    let storage = storage.lock().unwrap();
+    storage.cleanup_old_data(log_retention_days)
+}
+
+/// #49 读取设备固件信息：调 esptool image_info 读取已烧录固件基本信息
+#[tauri::command]
+fn read_firmware_info(port: String) -> Result<String, String> {
+    let output = std::process::Command::new("py")
+        .args(["-m", "esptool", "-p", &port, "image_info"])
+        .output()
+        .map_err(|e| format!("调用 esptool 失败: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        // image_info 失败时返回错误信息（可能无固件或分区异常）
+        Err(format!("读取固件信息失败: {}", stderr.lines().next().unwrap_or("未知错误")))
+    }
+}
+
+/// #94 检查应用更新：返回当前版本（前端可对比远程版本号决定是否提示）
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// M5：追加对话消息
 #[tauri::command]
 fn append_message(
@@ -682,6 +715,9 @@ pub fn run() {
             duplicate_project,
             export_project,
             import_project,
+            cleanup_old_data,
+            read_firmware_info,
+            get_app_version,
             append_message,
             load_messages,
             write_main_code,

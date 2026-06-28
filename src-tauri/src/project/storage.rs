@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/project/storage.rs
 // 文件作用：项目文件夹持久化，按 PRD 3.4 结构读写代码/对话/日志/元数据
-// 最后更新时间：2026-06-28-1255
+// 最后更新时间：2026-06-29-0057
 
 use crate::project::model::{
     ConversationMessage, PinBlacklistSnapshot, Project, ProjectState, StageLog,
@@ -170,7 +170,46 @@ impl ProjectStorage {
         Ok(project)
     }
 
-    /// #57 复制项目为副本（含全部代码/对话/日志），新 id 为 <原id>-copy-<时间戳>
+    /// #71 按保留策略清理旧数据：删除超期日志，统计项目数提示清理
+    /// 返回 (删除的日志文件数, 当前项目数)
+    pub fn cleanup_old_data(&self, log_retention_days: u32) -> Result<(usize, usize), String> {
+        use std::time::{Duration, SystemTime};
+        let mut deleted_logs = 0;
+        let projects_dir = &self.root;
+        if !projects_dir.exists() {
+            return Ok((0, 0));
+        }
+        let project_count = fs::read_dir(projects_dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .count();
+
+        if log_retention_days > 0 {
+            let now = SystemTime::now();
+            let threshold = Duration::from_secs(log_retention_days as u64 * 86400);
+            for entry in fs::read_dir(projects_dir).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let logs_dir = entry.path().join("logs");
+                if logs_dir.exists() {
+                    for log_entry in fs::read_dir(&logs_dir).map_err(|e| e.to_string())? {
+                        let log_file = log_entry.map_err(|e| e.to_string())?.path();
+                        if let Ok(meta) = fs::metadata(&log_file) {
+                            if let Ok(modified) = meta.modified() {
+                                if now.duration_since(modified).map(|d| d > threshold).unwrap_or(false) {
+                                    if fs::remove_file(&log_file).is_ok() {
+                                        deleted_logs += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok((deleted_logs, project_count))
+    }
+
     pub fn duplicate_project(&self, project_id: &str, new_name: &str) -> Result<Project, String> {
         let src_dir = self.project_dir(project_id);
         if !src_dir.exists() {

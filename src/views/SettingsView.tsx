@@ -1,6 +1,6 @@
 // 文件路径：src/views/SettingsView.tsx
-// 文件作用：设置视图——LLM配置/连接测试/供应商预设/Key掩码/自动化/引脚黑名单可视化/工具链检查/重置
-// 最后更新时间：2026-06-28-1300
+// 文件作用：设置视图——LLM配置/连接测试/供应商预设/Key掩码/自动化/引脚黑名单可视化/工具链检查/数据清理/重置
+// 最后更新时间：2026-06-29-0057
 
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -32,6 +32,8 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
   // #70 工具链检查
   const [toolchain, setToolchain] = useState<ToolchainStatus | null>(null);
   const [checkingToolchain, setCheckingToolchain] = useState(false);
+  // #71 数据清理
+  const [cleaning, setCleaning] = useState(false);
   // #65 API Key 掩码
   const [showKey, setShowKey] = useState(false);
   // #67 引脚可视化选中的芯片
@@ -106,6 +108,34 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
       setSettings(defaults);
       notify.info('已重置为当前加载的设置', '请按需修改后保存');
     } catch (e) { notify.error('重置失败', String(e)); }
+  };
+
+  // #71 立即清理超期日志（依据当前 data_management.log_retention_days）
+  const cleanupData = async () => {
+    if (!settings) return;
+    const days = settings.data_management.log_retention_days;
+    if (days <= 0) {
+      notify.warning('未配置保留天数', '请先填入大于 0 的日志保留天数后再清理');
+      return;
+    }
+    setCleaning(true);
+    try {
+      // 先保存，确保后端按最新设置清理
+      await invoke('save_settings', { settings });
+      const [deleted, projects] = await invoke<[number, number]>('cleanup_old_data', {
+        logRetentionDays: days,
+      });
+      notify.success('清理完成', `删除超期日志 ${deleted} 个，当前项目 ${projects} 个`);
+      if (settings.data_management.max_projects > 0 && projects > settings.data_management.max_projects) {
+        notify.warning(
+          '项目数量超过上限',
+          `当前 ${projects} 个，已超过上限 ${settings.data_management.max_projects}，请到项目页手动清理`,
+        );
+      }
+    } catch (e) {
+      notify.error('清理失败', String(e));
+    }
+    setCleaning(false);
   };
 
   if (!settings) return <div>加载设置中…</div>;
@@ -213,6 +243,27 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
         </div>
         <div className="pinmap-wrapper">
           <PinMap chip={pinChip} extraError={settings.pin_blacklist.extra_error} extraWarn={settings.pin_blacklist.extra_warn} />
+        </div>
+      </Card>
+
+      {/* #71 日志与数据管理 */}
+      <Card className="settings-section">
+        <h4>日志与数据管理</h4>
+        <div className="settings-row">
+          <label>项目数量上限</label>
+          <input type="number" value={settings.data_management.max_projects}
+            onChange={(e) => update('data_management.max_projects', +e.target.value)} />
+          <span className="hint">0=不限，超出提示清理</span>
+        </div>
+        <div className="settings-row">
+          <label>日志保留天数</label>
+          <input type="number" value={settings.data_management.log_retention_days}
+            onChange={(e) => update('data_management.log_retention_days', +e.target.value)} />
+          <span className="hint">0=不限，超期自动清理</span>
+        </div>
+        <div className="settings-row">
+          <label></label>
+          <Button variant="secondary" size="sm" onClick={cleanupData} loading={cleaning}>🧹 立即清理超期日志</Button>
         </div>
       </Card>
 
