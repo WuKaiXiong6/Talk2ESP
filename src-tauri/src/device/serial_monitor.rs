@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/device/serial_monitor.rs
 // 文件作用：串口监控，实时读取推 Channel + 手动发送数据，多设备并行管理
-// 最后更新时间：2026-06-28-0339
+// 最后更新时间：2026-06-28-1245
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -19,6 +19,46 @@ pub struct SerialLine {
     pub text: String,
     /// 是否为无法解码的原始字节
     pub raw: bool,
+}
+
+/// #40 完整串口参数（数据位/校验位/停止位）
+/// 缺省时由调用方使用 serialport 默认值（8N1），保持既有行为兼容
+#[derive(Clone, Debug)]
+pub struct SerialParams {
+    pub data_bits: u8,
+    pub parity: String,
+    pub stop_bits: String,
+}
+
+/// 将校验位字符串转为 serialport::Parity
+fn parse_parity(s: &str) -> Result<serialport::Parity, String> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(serialport::Parity::None),
+        "even" => Ok(serialport::Parity::Even),
+        "odd" => Ok(serialport::Parity::Odd),
+        _ => Err(format!("不支持的校验位: {s}")),
+    }
+}
+
+/// 将停止位字符串转为 serialport::StopBits
+fn parse_stop_bits(s: &str) -> Result<serialport::StopBits, String> {
+    match s {
+        "1" => Ok(serialport::StopBits::One),
+        "1.5" => Ok(serialport::StopBits::Two), // serialport 4.x 不支持 1.5，退化为 2 并提示
+        "2" => Ok(serialport::StopBits::Two),
+        _ => Err(format!("不支持的停止位: {s}")),
+    }
+}
+
+/// 将数据位转为 serialport::DataBits
+fn parse_data_bits(b: u8) -> Result<serialport::DataBits, String> {
+    match b {
+        5 => Ok(serialport::DataBits::Five),
+        6 => Ok(serialport::DataBits::Six),
+        7 => Ok(serialport::DataBits::Seven),
+        8 => Ok(serialport::DataBits::Eight),
+        _ => Err(format!("不支持的数据位: {b}")),
+    }
 }
 
 /// 单个串口的监控句柄：写半部 + 停止标志
@@ -65,14 +105,33 @@ impl SerialMonitor {
     /// 启动某端口的串口监控：读线程阻塞读取并经 Channel 推送，写半部存入 map
     pub fn start(&self, port: &str, baud: u32, on_line: Channel<SerialLine>) -> Result<(), String> {
         // Channel 实现了 Send + 'static，转成闭包供内部方法复用
-        self.start_with_callback(port, baud, move |line| {
+        self.start_with_callback(port, baud, None, move |line| {
+            let _ = on_line.send(line);
+        })
+    }
+
+    /// #40 带完整串口参数启动监控（params 为 None 时沿用 8N1 默认）
+    pub fn start_with_params(
+        &self,
+        port: &str,
+        baud: u32,
+        params: Option<SerialParams>,
+        on_line: Channel<SerialLine>,
+    ) -> Result<(), String> {
+        self.start_with_callback(port, baud, params, move |line| {
             let _ = on_line.send(line);
         })
     }
 
     /// 启动串口监控的核心实现：读线程阻塞读取，每行经回调推送，写半部存入 map
     /// 抽出此方法便于单元测试注入回调（Tauri Channel 无法在纯测试中创建）
-    pub fn start_with_callback<F>(&self, port: &str, baud: u32, on_line: F) -> Result<(), String>
+    pub fn start_with_callback<F>(
+        &self,
+        port: &str,
+        baud: u32,
+        params: Option<SerialParams>,
+        on_line: F,
+    ) -> Result<(), String>
     where
         F: FnMut(SerialLine) + Send + 'static,
     {
@@ -81,8 +140,14 @@ impl SerialMonitor {
             self.stop(port)?;
         }
 
-        let serial = serialport::new(port, baud)
-            .timeout(Duration::from_millis(100))
+        // 构造串口打开器，按需应用完整参数
+        let mut builder = serialport::new(port, baud).timeout(Duration::from_millis(100));
+        if let Some(p) = params {
+            builder = builder.data_bits(parse_data_bits(p.data_bits)?);
+            builder = builder.parity(parse_parity(&p.parity)?);
+            builder = builder.stop_bits(parse_stop_bits(&p.stop_bits)?);
+        }
+        let serial = builder
             .open()
             .map_err(|e| format!("打开串口 {port} 失败: {e}"))?;
 
@@ -208,7 +273,7 @@ mod tests {
         let tx = std::sync::Mutex::new(tx);
 
         monitor
-            .start_with_callback(port, 115200, move |line| {
+            .start_with_callback(port, 115200, None, move |line| {
                 let _ = tx.lock().unwrap().send(line);
             })
             .expect("启动监控失败");

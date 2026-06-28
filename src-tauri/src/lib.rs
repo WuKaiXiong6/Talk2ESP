@@ -64,15 +64,28 @@ fn scan_devices() -> Vec<DeviceInfo> {
 }
 
 /// M1：启动某端口的串口监控，行输出经 Channel 推送前端
+/// #40 新增可选串口参数（data_bits/parity/stop_bits），缺省时保持 8N1 兼容既有行为
 #[tauri::command]
 fn start_monitor(
     port: String,
     baud: u32,
     on_line: Channel<SerialLine>,
     monitor: State<'_, Mutex<SerialMonitor>>,
+    data_bits: Option<u8>,
+    parity: Option<String>,
+    stop_bits: Option<String>,
 ) -> Result<(), String> {
     let monitor = monitor.lock().unwrap();
-    monitor.start(&port, baud, on_line)
+    // 构造可选串口参数；None 表示沿用 serialport 默认（8N1）
+    let params = match (data_bits, parity.as_deref(), stop_bits.as_deref()) {
+        (Some(db), Some(pa), Some(sb)) => Some(device::SerialParams {
+            data_bits: db,
+            parity: pa.to_string(),
+            stop_bits: sb.to_string(),
+        }),
+        _ => None,
+    };
+    monitor.start_with_params(&port, baud, params, on_line)
 }
 
 /// M1：向某端口发送一行数据

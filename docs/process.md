@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1240
+最后更新时间：2026-06-28-1245
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -452,6 +452,32 @@
   - 核心流水线逻辑（runAutoPipeline）行为未变，仅新增状态跟踪与 UI 展示。
 - **结论**：部分通过（自动化部分全通过；GUI 时间线/高亮/示例/标签页现象待人工验证）
 - **遗留问题**：①时间线在真实流水线运行中的状态推进需人工验证；②历史快照目前仅会话内，未持久化（阶段F项目化管理）。
+
+### 验证 2026-06-28-1245：阶段D 串口监控（ux-monitor）— #31/#32/#33/#34/#35/#36/#37/#40/#42
+- **验证时间**：2026-06-28-1245
+- **验证对象**：输出时间戳/着色/搜索/暂停/清空/导出 + 波特率预设 + 发送区历史 + 状态实时 + 完整串口参数
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7 + Rust serialport 4.9
+- **实现内容**：
+  1. **#31 输出时间戳**：每行带 `HH:mm:ss` 时间戳（灰色）；
+  2. **#32 输出着色**：classifyLine 按 TEST:PASS 绿/TEST:FAIL 红/ECHO 蓝/error 橙 分类着色；
+  3. **#33 搜索过滤**：搜索框实时过滤输出（保留全部行，仅显示匹配）；
+  4. **#34 暂停滚动**：暂停期间缓冲到 ref，恢复时一次性追加，不丢数据；
+  5. **#35 一键清空**：清空当前行与暂停缓冲；
+  6. **#36 发送区历史**：去重记录最近20条，点击回填；
+  7. **#37 自动换行/状态显示**：自动滚动开关 + 监控中/已停止状态 Badge；
+  8. **#40 完整串口参数**：后端 `SerialParams` + `start_with_params`，命令增加 data_bits/parity/stop_bits 可选参数（缺省 8N1 兼容）；前端高级参数面板；
+  9. **#42 输出导出**：导出 TXT（带时间戳）+ CSV（带 BOM 便于 Excel）。
+- **后端改动**（保持兼容）：
+  - `serial_monitor.rs` 新增 `SerialParams` 结构 + `parse_data_bits/parse_parity/parse_stop_bits` 转换函数 + `start_with_params` 方法；
+  - `start_with_callback` 签名增加 `params: Option<SerialParams>`，None 时沿用 serialport 默认（8N1）；
+  - `lib.rs::start_monitor` 命令增加 3 个 Option 参数；既有调用不传参则 params=None，行为不变；
+  - 既有 `start` 方法与 `monitor_send_and_receive_echo` 测试更新为新签名（params=None）。
+- **观察现象**：
+  - `cargo build` 通过（2 个既有 warning，无新增 error）；
+  - `cargo test --lib` 26 测试全过，1 ignored，无回归；
+  - `tsc --noEmit` 通过；`npm run build` 成功（63 模块）。
+- **结论**：部分通过（自动化全通过；GUI 监控界面各功能现象待人工验证）
+- **遗留问题**：①串口参数（数据位/校验位/停止位）需真实设备验证生效；②serialport 4.x 不支持 1.5 停止位，已退化为 2 并在代码注释说明。
 
 ---
 
