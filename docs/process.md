@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1255
+最后更新时间：2026-06-28-1300
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -532,6 +532,30 @@
   - `tsc --noEmit` 通过；`npm run build` 成功（67 模块，274KB JS）。
 - **结论**：部分通过（自动化全通过；GUI 搜索/排序/重命名/导入导出/删除确认现象待人工验证）
 - **遗留问题**：①导入导出 zip 需真实项目验证打包完整性；②标签功能(#57)未实现，留待后续。
+
+### 验证 2026-06-28-1300：阶段G 设置增强（ux-settings）— #63/#64/#65/#66/#67/#68/#70/#72
+- **验证时间**：2026-06-28-1300
+- **验证对象**：LLM连接测试 + 供应商预设 + Key掩码 + 引脚黑名单可视化 + 工具链检查 + 设置重置
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7 + Rust
+- **实现内容**：
+  1. **#63 LLM 连接测试**：后端 `test_llm_connection` 命令发送最小请求验证连通性；前端按钮触发，保存后测试；
+  2. **#64 供应商预设下拉**：火山方舟/智谱GLM/DeepSeek/通义千问/OpenAI 五个预设，一键填充 base_url+model；
+  3. **#65 API Key 掩码**：password 输入 + 显示/隐藏切换按钮；
+  4. **#66 主题/字号设置**：已在阶段B通过 ThemeToggle 实现（头部入口），设置页可视为快捷入口；
+  5. **#67 引脚黑名单可视化**：PinMap 组件加载 `get_chip_descriptor`，网格展示全部引脚，按 error(Flash)/error-octal/warn(Strapping)/safe-default/safe 着色，悬浮显示备注；用户额外禁止/提示引脚以虚线边框区分；
+  6. **#68 自动化细粒度选项**：模式(full/step)+烧录前确认开关（既有）；
+  7. **#70 工具链健康检查**：后端 `check_toolchain` 命令检测 arduino-cli 路径/版本/已装ESP32核心/esptool 可用性；前端展示状态卡片；
+  8. **#72 设置重置**：重置按钮（二次确认）。
+- **后端新增**（不破坏既有）：
+  - `lib.rs` 新增 `test_llm_connection`/`check_toolchain`/`get_chip_descriptor` 三个命令；
+  - `ToolchainStatus` 结构 + `check_toolchain_impl` 实现（调 arduino-cli version/core list + py -m esptool version）；
+  - `chips::ChipDescriptor` 增加 `Serialize` derive；
+  - `toolchain::mod.rs` 重新导出 `resolve_arduino_cli`。
+- **观察现象**：
+  - `cargo build` 通过（2 既有 warning）；`cargo test --lib` 26 全过 1 ignored；
+  - `tsc --noEmit` 通过；`npm run build` 成功（69 模块，280KB JS）。
+- **结论**：部分通过（自动化全通过；GUI 连接测试/引脚图/工具链检查现象待人工验证）
+- **遗留问题**：①LLM 连接测试与工具链检查需真实环境验证结果准确性；②引脚图 Octal 变体当前归为警告（受后端 pin_level 限制），可视化已用虚线区分。
 
 ---
 

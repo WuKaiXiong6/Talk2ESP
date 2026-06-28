@@ -1,0 +1,65 @@
+/* 文件路径：src/components/PinMap.css */
+/* 文件作用：引脚黑名单可视化样式——网格 + 图例 + 悬浮备注 */
+/* 最后更新时间：2026-06-28-1300 */
+
+.pinmap { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.pinmap-header { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.pinmap-chip { font-weight: 700; font-size: var(--font-size-md); color: var(--color-primary); }
+.pinmap-fqbn { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.pinmap-count { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+
+.pinmap-legend { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.pinmap-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-1);
+  vertical-align: middle;
+}
+
+.pinmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: var(--space-1);
+  max-width: 600px;
+}
+
+.pinmap-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-radius: var(--radius-md);
+  cursor: default;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  border: 1px solid var(--color-border-light);
+  transition: transform var(--transition-fast);
+}
+
+.pinmap-cell:hover { transform: scale(1.1); z-index: 1; }
+
+.pinmap-pin-num { font-family: var(--font-mono); }
+
+.pinmap-error { background: var(--color-danger); color: var(--color-text-inverse); border-color: var(--color-danger); }
+.pinmap-error-octal { background: var(--color-danger-bg); color: var(--color-danger-text); border-color: var(--color-danger-border); border-style: dashed; }
+.pinmap-warn { background: var(--color-warning-bg); color: var(--color-warning-text); border-color: var(--color-warning-border); }
+.pinmap-extra-error { background: var(--color-danger); color: var(--color-text-inverse); border-color: var(--color-danger); border-style: dotted; }
+.pinmap-extra-warn { background: var(--color-warning-bg); color: var(--color-warning-text); border-color: var(--color-warning-border); border-style: dotted; }
+.pinmap-safe-default { background: var(--color-success-bg); color: var(--color-success-text); border-color: var(--color-success-border); }
+.pinmap-safe { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+
+.pinmap-note {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.pinmap-loading, .pinmap-error { padding: var(--space-3); color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.pinmap-error { color: var(--color-danger); }

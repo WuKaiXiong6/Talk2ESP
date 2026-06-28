@@ -1,13 +1,13 @@
 // 文件路径：src-tauri/src/chips/mod.rs
 // 文件作用：型号描述表模块，加载 chips/*.toml 提供引脚黑名单/FQBN/Flash偏移
-// 最后更新时间：2026-06-28-1011
+// 最后更新时间：2026-06-28-1300
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// 单个芯片的型号描述
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ChipDescriptor {
     pub chip: String,
     pub fqbn: String,

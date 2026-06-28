@@ -216,6 +216,12 @@ fn list_chips() -> Vec<String> {
     chips::list_supported_chips()
 }
 
+/// #67 获取芯片引脚描述符（用于引脚黑名单可视化）
+#[tauri::command]
+fn get_chip_descriptor(chip: String) -> Result<chips::ChipDescriptor, String> {
+    chips::load_descriptor(&chip)
+}
+
 /// M5：创建项目
 #[tauri::command]
 fn create_project(
@@ -365,6 +371,98 @@ fn is_llm_configured() -> bool {
     settings::is_llm_configured(&settings::load_settings())
 }
 
+/// #63 测试 LLM 连接：发送一个最小请求验证配置可用
+#[tauri::command]
+async fn test_llm_connection() -> Result<String, String> {
+    let provider = make_provider()?;
+    // 发送最小对话请求验证连通性
+    let reply = provider
+        .chat(vec![ChatMessage::system("Reply with: ok")])
+        .await
+        .map_err(|e| format!("LLM 连接失败: {e}"))?;
+    Ok(format!("连接成功，模型响应: {}", reply.chars().take(50).collect::<String>()))
+}
+
+/// #70 工具链健康检查：检测 arduino-cli 是否可用 + 版本 + 已安装核心
+#[tauri::command]
+fn check_toolchain() -> ToolchainStatus {
+    check_toolchain_impl()
+}
+
+/// 工具链状态
+#[derive(serde::Serialize)]
+struct ToolchainStatus {
+    /// arduino-cli 是否可解析
+    cli_found: bool,
+    /// arduino-cli 路径
+    cli_path: Option<String>,
+    /// 版本号
+    version: Option<String>,
+    /// 已安装的 ESP32 核心（fqbn 前缀）
+    esp32_cores: Vec<String>,
+    /// esptool 是否可用
+    esptool_available: bool,
+    /// 错误信息
+    error: Option<String>,
+}
+
+/// 工具链检查实现
+fn check_toolchain_impl() -> ToolchainStatus {
+    // 1. 解析 arduino-cli 路径
+    let cli_path = match toolchain::resolve_arduino_cli() {
+        Ok(p) => p,
+        Err(e) => {
+            return ToolchainStatus {
+                cli_found: false,
+                cli_path: None,
+                version: None,
+                esp32_cores: Vec::new(),
+                esptool_available: false,
+                error: Some(format!("arduino-cli 未找到: {e}")),
+            };
+        }
+    };
+    let path_str = cli_path.to_string_lossy().to_string();
+
+    // 2. 查询版本
+    let version = std::process::Command::new(&cli_path)
+        .arg("version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.lines().next().unwrap_or("").trim().to_string());
+
+    // 3. 查询已安装核心
+    let esp32_cores = std::process::Command::new(&cli_path)
+        .args(["core", "list"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| {
+            s.lines()
+                .filter(|l| l.contains("esp32"))
+                .filter_map(|l| l.split_whitespace().next().map(|x| x.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // 4. 检测 esptool（py -m esptool --version）
+    let esptool_available = std::process::Command::new("py")
+        .args(["-m", "esptool", "version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    ToolchainStatus {
+        cli_found: true,
+        cli_path: Some(path_str),
+        version,
+        esp32_cores,
+        esptool_available,
+        error: None,
+    }
+}
+
 /// M6：运行全自动流水线（需求确认书 → 代码 → 编译 → 烧录 → 验证）
 #[tauri::command]
 async fn run_full_pipeline(
@@ -436,6 +534,7 @@ pub fn run() {
             check_pins,
             scan_dangers,
             list_chips,
+            get_chip_descriptor,
             create_project,
             list_projects,
             load_project,
@@ -452,6 +551,8 @@ pub fn run() {
             load_settings,
             save_settings,
             is_llm_configured,
+            test_llm_connection,
+            check_toolchain,
             run_full_pipeline,
             start_tick
         ])

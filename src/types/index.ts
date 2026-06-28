@@ -148,3 +148,26 @@ export interface Settings {
     verbose_log: boolean;
   };
 }
+
+/// #70 工具链健康检查结果
+export interface ToolchainStatus {
+  cli_found: boolean;
+  cli_path: string | null;
+  version: string | null;
+  esp32_cores: string[];
+  esptool_available: boolean;
+  error: string | null;
+}
+
+/// 芯片引脚描述符（用于引脚黑名单可视化）
+export interface ChipDescriptor {
+  chip: string;
+  fqbn: string;
+  pin_count: number;
+  pin_blacklist_error: number[];
+  pin_blacklist_error_octal: number[];
+  pin_blacklist_warn: number[];
+  pin_safe_default: number[];
+  pin_notes: Record<string, string>;
+}
+
