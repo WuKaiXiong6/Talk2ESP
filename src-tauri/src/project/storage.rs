@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/project/storage.rs
 // 文件作用：项目文件夹持久化，按 PRD 3.4 结构读写代码/对话/日志/元数据
-// 最后更新时间：2026-06-28-1015
+// 最后更新时间：2026-06-28-1255
 
 use crate::project::model::{
     ConversationMessage, PinBlacklistSnapshot, Project, ProjectState, StageLog,
@@ -159,6 +159,99 @@ impl ProjectStorage {
             fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    /// #54 重命名项目（仅更新 name 字段，不改变 id 与目录）
+    pub fn rename_project(&self, project_id: &str, new_name: &str) -> Result<Project, String> {
+        let mut project = self.load_project(project_id)?;
+        project.name = new_name.to_string();
+        project.updated_at = now_iso();
+        self.save_project(&project)?;
+        Ok(project)
+    }
+
+    /// #56 导出项目为 zip 字节流（包含 project.json/conversation.jsonl/src/logs）
+    pub fn export_project(&self, project_id: &str) -> Result<Vec<u8>, String> {
+        let dir = self.project_dir(project_id);
+        if !dir.exists() {
+            return Err(format!("项目 {project_id} 不存在"));
+        }
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            let options =
+                zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            Self::add_dir_to_zip(&mut zip, &dir, Path::new(project_id), &options)?;
+            zip.finish().map_err(|e| e.to_string())?;
+        }
+        Ok(buf.into_inner())
+    }
+
+    /// 递归将目录加入 zip
+    fn add_dir_to_zip<W: std::io::Write + std::io::Seek>(
+        zip: &mut zip::ZipWriter<W>,
+        dir: &Path,
+        prefix: &Path,
+        options: &zip::write::SimpleFileOptions,
+    ) -> Result<(), String> {
+        for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let name = prefix.join(entry.file_name());
+            if path.is_dir() {
+                zip.add_directory(name.to_string_lossy(), *options).map_err(|e| e.to_string())?;
+                Self::add_dir_to_zip(zip, &path, &name, options)?;
+            } else {
+                zip.start_file(name.to_string_lossy(), *options).map_err(|e| e.to_string())?;
+                let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+                zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+
+    /// #56 从 zip 字节流导入项目（解压到新 id 目录）
+    pub fn import_project(&self, zip_bytes: &[u8]) -> Result<Project, String> {
+        let reader = std::io::Cursor::new(zip_bytes);
+        let mut archive = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
+        // 从 zip 内首层目录名派生新 id（避免与既有冲突，加 import- 前缀与时间戳）
+        let first_name = archive
+            .file_names()
+            .next()
+            .and_then(|n| n.split('/').next())
+            .unwrap_or("imported")
+            .to_string();
+        let new_id = format!("import-{}-{}", sanitize(&first_name), timestamp_id());
+        let new_dir = self.project_dir(&new_id);
+        fs::create_dir_all(&new_dir).map_err(|e| e.to_string())?;
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+            let outpath = match file.enclosed_name() {
+                Some(p) => p,
+                None => continue,
+            };
+            // 去掉 zip 内首层目录前缀，映射到 new_dir 下
+            let rel = outpath.iter().skip(1).collect::<PathBuf>();
+            if rel.as_os_str().is_empty() {
+                continue;
+            }
+            let target = new_dir.join(&rel);
+            if file.is_dir() {
+                fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+            } else {
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                let mut out = fs::File::create(&target).map_err(|e| e.to_string())?;
+                std::io::copy(&mut file, &mut out).map_err(|e| e.to_string())?;
+            }
+        }
+        // 加载导入后的 project.json，更新 id/时间戳
+        let mut project = self.load_project(&new_id)?;
+        project.id = new_id.clone();
+        project.updated_at = now_iso();
+        self.save_project(&project)?;
+        Ok(project)
     }
 }
 

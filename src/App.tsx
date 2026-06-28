@@ -338,7 +338,7 @@ function AppInner() {
                 onGoMonitor={() => setView('monitor')}
               />
             )}
-            {view === 'projects' && <ProjectsView />}
+            {view === 'projects' && <ProjectsView onGoDevelop={() => setView('develop')} />}
             {view === 'monitor' && <MonitorView />}
             {view === 'settings' && (
               <SettingsView onSaved={() => invoke<boolean>('is_llm_configured').then(setLlmConfigured)} />

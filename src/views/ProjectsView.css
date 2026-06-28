@@ -1,0 +1,98 @@
+/* 文件路径：src/views/ProjectsView.css */
+/* 文件作用：项目管理视图样式——搜索/排序工具栏 + 项目卡片网格 + 重命名/确认对话框 */
+/* 最后更新时间：2026-06-28-1255 */
+
+.projects-view { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.projects-actions { display: flex; gap: var(--space-2); }
+.import-label { display: inline-flex; cursor: pointer; }
+.hidden-file { display: none; }
+
+.projects-toolbar { display: flex; gap: var(--space-2); }
+.projects-search {
+  flex: 1;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+.projects-search:focus { outline: none; border-color: var(--color-primary); box-shadow: var(--shadow-focus); }
+.projects-sort {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.project-card { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+
+.project-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.project-name {
+  font-weight: 600;
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.rename-box { display: flex; align-items: center; gap: var(--space-1); flex: 1; }
+.rename-box input {
+  flex: 1;
+  padding: 2px var(--space-1);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+}
+
+.project-card-body { display: flex; flex-direction: column; gap: var(--space-1); }
+.project-field {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+.project-field > span { color: var(--color-text-muted); }
+.project-field > strong { color: var(--color-text-primary); }
+
+.project-card-actions {
+  display: flex;
+  gap: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.detail-toolbar { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+
+.confirm-dialog {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger-text);
+}
+.confirm-actions { display: flex; gap: var(--space-2); }

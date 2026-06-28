@@ -1,24 +1,67 @@
 // 文件路径：src/views/ProjectsView.tsx
-// 文件作用：项目管理视图——项目列表 + 详情查看 + 删除
-// 最后更新时间：2026-06-28-1230
+// 文件作用：项目管理视图——搜索/排序/重命名/导入导出/删除二次确认/状态刷新/卡片化
+// 最后更新时间：2026-06-28-1255
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Project, ConversationMessage } from '../types';
-import { Button, Badge, IconButton } from '../components/ui';
+import { Button, Badge, Card, IconButton } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
+import { SkeletonTable } from '../components/Skeleton';
+import { useNotifications } from '../components/notifications';
+import './ProjectsView.css';
 
-export function ProjectsView() {
+/// 排序方式
+type SortKey = 'updated' | 'created' | 'name' | 'state';
+
+interface ProjectsViewProps {
+  onGoDevelop: () => void;
+}
+
+export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
+  const notify = useNotifications();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [detail, setDetail] = useState<{ code: string; messages: ConversationMessage[] } | null>(null);
   const [loading, setLoading] = useState(false);
+  // #53 搜索
+  const [search, setSearch] = useState('');
+  // #55 排序
+  const [sortKey, setSortKey] = useState<SortKey>('updated');
+  // #54 重命名
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  // #59 删除二次确认
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // #56 导入
+  const [importing, setImporting] = useState(false);
 
   const refresh = () => {
     setLoading(true);
     invoke<Project[]>('list_projects').then(setProjects).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { refresh(); }, []);
+
+  // #53/#55 搜索 + 排序
+  const filteredSorted = useMemo(() => {
+    let list = projects;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) =>
+        p.name.toLowerCase().includes(q) || p.chip.toLowerCase().includes(q) || p.id.toLowerCase().includes(q),
+      );
+    }
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      switch (sortKey) {
+        case 'name': return a.name.localeCompare(b.name, 'zh');
+        case 'created': return b.created_at.localeCompare(a.created_at);
+        case 'state': return a.state.localeCompare(b.state);
+        default: return b.updated_at.localeCompare(a.updated_at);
+      }
+    });
+    return sorted;
+  }, [projects, search, sortKey]);
 
   const viewDetail = async (p: Project) => {
     setSelected(p);
@@ -34,16 +77,65 @@ export function ProjectsView() {
     }
   };
 
-  const del = async (id: string) => {
-    await invoke('delete_project', { projectId: id });
-    if (selected?.id === id) { setSelected(null); setDetail(null); }
-    refresh();
+  // #54 重命名
+  const startRename = (p: Project) => { setRenamingId(p.id); setRenameValue(p.name); };
+  const confirmRename = async () => {
+    if (!renamingId || !renameValue.trim()) return;
+    try {
+      await invoke('rename_project', { projectId: renamingId, newName: renameValue.trim() });
+      notify.success('已重命名', renameValue.trim());
+      setRenamingId(null);
+      refresh();
+    } catch (e) { notify.error('重命名失败', String(e)); }
+  };
+
+  // #59 删除二次确认
+  const confirmDelete = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      await invoke('delete_project', { projectId: confirmDeleteId });
+      notify.success('项目已删除');
+      if (selected?.id === confirmDeleteId) { setSelected(null); setDetail(null); }
+      setConfirmDeleteId(null);
+      refresh();
+    } catch (e) { notify.error('删除失败', String(e)); }
+  };
+
+  // #56 导出
+  const exportProject = async (p: Project) => {
+    try {
+      const bytes = await invoke<number[]>('export_project', { projectId: p.id });
+      const blob = new Blob([new Uint8Array(bytes)], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${p.name}_${p.id}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify.success('已导出', `${p.name}.zip`);
+    } catch (e) { notify.error('导出失败', String(e)); }
+  };
+
+  // #56 导入
+  const importProject = async (file: File) => {
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(buf));
+      const p = await invoke<Project>('import_project', { zipBytes: bytes });
+      notify.success('已导入项目', p.name);
+      refresh();
+    } catch (e) { notify.error('导入失败', String(e)); }
+    setImporting(false);
   };
 
   if (selected) {
     return (
       <div className="project-detail ui-card">
-        <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>← 返回列表</Button>
+        <div className="detail-toolbar">
+          <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>← 返回列表</Button>
+          <Button variant="secondary" size="sm" onClick={() => exportProject(selected)}>📦 导出</Button>
+        </div>
         <h3>{selected.name}</h3>
         <div className="detail-meta">
           <span>芯片: <strong>{selected.chip}</strong></span>
@@ -52,10 +144,8 @@ export function ProjectsView() {
           <span>创建: {selected.created_at}</span>
           <span>重试: 编{selected.retry_counts.compile}/烧{selected.retry_counts.flash}/验{selected.retry_counts.verify}</span>
         </div>
-
         <h4>主程序代码</h4>
         <pre className="code-block">{detail?.code ?? '加载中…'}</pre>
-
         <h4>对话记录（{detail?.messages.length ?? 0}）</h4>
         <div className="messages">
           {detail?.messages.map((m, i) => (
@@ -66,57 +156,106 @@ export function ProjectsView() {
           ))}
           {detail && detail.messages.length === 0 && <p className="empty-inline">暂无对话记录</p>}
         </div>
-
         <div className="detail-actions">
-          <Button variant="danger" size="sm" onClick={() => del(selected.id)}>删除项目</Button>
+          <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(selected.id)}>删除项目</Button>
         </div>
+        {confirmDeleteId === selected.id && (
+          <div className="confirm-dialog" role="alertdialog">
+            <span>确认删除项目「{selected.name}」？此操作不可恢复。</span>
+            <div className="confirm-actions">
+              <Button variant="danger" size="sm" onClick={confirmDelete}>确认删除</Button>
+              <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>取消</Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="projects-view ui-card">
+    <div className="projects-view">
       <div className="view-header">
-        <h3>项目列表（{projects.length}）</h3>
-        {loading && <Badge tone="info">加载中…</Badge>}
+        <h3>项目列表（{filteredSorted.length}/{projects.length}）</h3>
+        <div className="projects-actions">
+          {/* #56 导入 */}
+          <label className="import-label">
+            <input
+              type="file"
+              accept=".zip"
+              className="hidden-file"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) importProject(f); e.target.value = ''; }}
+            />
+            <Button variant="secondary" size="sm" loading={importing} disabled={importing}>📥 导入</Button>
+          </label>
+        </div>
       </div>
-      {projects.length === 0 ? (
+
+      {/* #53 搜索 + #55 排序 */}
+      <div className="projects-toolbar">
+        <input
+          className="projects-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="🔍 搜索项目名/芯片/ID…"
+        />
+        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="projects-sort">
+          <option value="updated">按更新时间</option>
+          <option value="created">按创建时间</option>
+          <option value="name">按名称</option>
+          <option value="state">按状态</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <SkeletonTable rows={3} cols={5} />
+      ) : filteredSorted.length === 0 ? (
         <EmptyState
           icon="📁"
-          title="暂无项目"
-          description="前往「开发」视图，输入需求即可一键创建项目并自动开发。"
+          title={search ? '无匹配项目' : '暂无项目'}
+          description={search ? '尝试更换搜索关键词' : '前往「开发」视图，输入需求即可一键创建项目并自动开发。'}
+          actions={!search ? [{ label: '去开发', onClick: onGoDevelop }] : undefined}
         />
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>名称</th><th>芯片</th><th>状态</th><th>端口</th><th>创建时间</th><th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {projects.map((p) => (
-              <tr key={p.id} className="clickable" onClick={() => viewDetail(p)}>
-                <td>{p.name}</td>
-                <td>{p.chip}</td>
-                <td>
-                  <Badge tone={p.state === 'archived' ? 'success' : p.state === 'failed' ? 'danger' : 'info'}>
-                    {p.state}
-                  </Badge>
-                </td>
-                <td>{p.port ?? '-'}</td>
-                <td>{p.created_at}</td>
-                <td>
-                  <IconButton
-                    label="删除项目"
-                    onClick={(e) => { e.stopPropagation(); del(p.id); }}
-                  >
-                    🗑
-                  </IconButton>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="projects-grid">
+          {filteredSorted.map((p) => (
+            <Card key={p.id} interactive className="project-card" onClick={() => viewDetail(p)}>
+              <div className="project-card-header">
+                {renamingId === p.id ? (
+                  <div className="rename-box" onClick={(e) => e.stopPropagation()}>
+                    <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') setRenamingId(null); }}
+                      autoFocus
+                    />
+                    <IconButton label="确认" onClick={confirmRename}>✓</IconButton>
+                    <IconButton label="取消" onClick={() => setRenamingId(null)}>✕</IconButton>
+                  </div>
+                ) : (
+                  <span className="project-name" title={p.name}>{p.name}</span>
+                )}
+                <Badge tone={p.state === 'archived' ? 'success' : p.state === 'failed' ? 'danger' : 'info'}>{p.state}</Badge>
+              </div>
+              <div className="project-card-body">
+                <div className="project-field"><span>芯片</span><strong>{p.chip}</strong></div>
+                <div className="project-field"><span>端口</span><strong>{p.port ?? '-'}</strong></div>
+                <div className="project-field"><span>更新</span><strong>{p.updated_at}</strong></div>
+              </div>
+              <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
+                <IconButton label="重命名" onClick={() => startRename(p)}>✏</IconButton>
+                <IconButton label="导出" onClick={() => exportProject(p)}>📦</IconButton>
+                <IconButton label="删除" onClick={() => setConfirmDeleteId(p.id)}>🗑</IconButton>
+              </div>
+              {confirmDeleteId === p.id && (
+                <div className="confirm-dialog" role="alertdialog" onClick={(e) => e.stopPropagation()}>
+                  <span>确认删除？不可恢复</span>
+                  <div className="confirm-actions">
+                    <Button variant="danger" size="sm" onClick={confirmDelete}>删除</Button>
+                    <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>取消</Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

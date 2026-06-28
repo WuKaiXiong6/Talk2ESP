@@ -265,6 +265,37 @@ fn delete_project(project_id: String, storage: State<'_, Mutex<ProjectStorage>>)
     storage.delete_project(&project_id)
 }
 
+/// #54 重命名项目
+#[tauri::command]
+fn rename_project(
+    project_id: String,
+    new_name: String,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<Project, String> {
+    let storage = storage.lock().unwrap();
+    storage.rename_project(&project_id, &new_name)
+}
+
+/// #56 导出项目为 zip 字节流
+#[tauri::command]
+fn export_project(
+    project_id: String,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<Vec<u8>, String> {
+    let storage = storage.lock().unwrap();
+    storage.export_project(&project_id)
+}
+
+/// #56 从 zip 字节流导入项目
+#[tauri::command]
+fn import_project(
+    zip_bytes: Vec<u8>,
+    storage: State<'_, Mutex<ProjectStorage>>,
+) -> Result<Project, String> {
+    let storage = storage.lock().unwrap();
+    storage.import_project(&zip_bytes)
+}
+
 /// M5：追加对话消息
 #[tauri::command]
 fn append_message(
@@ -410,6 +441,9 @@ pub fn run() {
             load_project,
             save_project,
             delete_project,
+            rename_project,
+            export_project,
+            import_project,
             append_message,
             load_messages,
             write_main_code,
