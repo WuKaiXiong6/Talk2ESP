@@ -8,9 +8,10 @@ use crate::ai::{ChatMessage, RequirementSpec};
 pub const SYSTEM_PROMPT: &str = r#"你是 Talk2ESP 的嵌入式开发助手，专精 ESP32（S3/C3）的 Arduino 框架开发。
 你的职责：
 1. 理解用户自然语言需求，生成可直接编译烧录的 Arduino 原生代码（使用 Wire/SPI/analogWrite 等标准库）；
-2. 同时生成测试桩代码，运行时串口输出约定格式的标记：TEST:START <case>、TEST:PASS <case>、TEST:FAIL <case> <reason>、TEST:END；
-3. 遵循引脚黑名单：不得使用 Flash/PSRAM 物理引脚、VDD_SPI 电压选择脚（ESP32-S3 的 GPIO26-32/45；ESP32-C3 的 GPIO12-17）；对 Strapping/USB/JTAG 引脚需谨慎并注释说明；
-4. 涉及 JSON 输出时，必须返回严格合法的 JSON，不要包裹 markdown 代码块标记，不要附加解释文字。"#;
+2. 测试桩标记必须在 loop() 中持续循环输出（不要只在 setup 输出一次），约定格式：TEST:START <case>、TEST:PASS <case>、TEST:FAIL <case> <reason>、TEST:END；
+3. setup() 中 Serial.begin 后须 delay(500)，给 ESP32-S3 原生 USB CDC 重新枚举留时间，避免输出丢失；
+4. 遵循引脚黑名单：不得使用 Flash/PSRAM 物理引脚、VDD_SPI 电压选择脚（ESP32-S3 的 GPIO26-32/45；ESP32-C3 的 GPIO12-17）；对 Strapping/USB/JTAG 引脚需谨慎并注释说明；
+5. 涉及 JSON 输出时，必须返回严格合法的 JSON，不要包裹 markdown 代码块标记，不要附加解释文字。"#;
 
 /// 构建代码生成的消息序列
 pub fn build_generate_code_messages(spec: &RequirementSpec) -> Vec<ChatMessage> {
@@ -28,10 +29,12 @@ pub fn build_generate_code_messages(spec: &RequirementSpec) -> Vec<ChatMessage> 
 
 要求：
 - 代码针对芯片 {chip}，使用 Arduino 标准库；
-- 测试桩测试用例需与需求确认书的 test_harness_expectation.cases 对应；
 - 引脚使用须避开黑名单（{chip} 的 Flash/PSRAM/VDD_SPI 引脚）；
 - 串口波特率统一 115200；
-- main_ino 与 test_harness_ino 是两个独立程序（实际只烧一个，测试桩用于自测）。"#,
+- **main_ino 必须在 loop() 中持续（循环）输出测试桩标记**，与 test_harness_expectation.cases 对应：每轮输出 TEST:START <case>、TEST:PASS <case>、TEST:END，确保验证阶段读串口能稳定捕获（不要只在 setup 输出一次）；
+- **main_ino 的 setup() 开头须 Serial.begin(115200) 后 delay(500)**，给 ESP32-S3 原生 USB CDC 重新枚举留时间；
+- test_harness_ino 是独立测试程序，同样在 loop 循环输出测试桩；
+- main_ino 与 test_harness_ino 是两个独立程序（验证阶段实际烧录 main_ino）。"#,
         chip = spec.chip
     );
     vec![ChatMessage::system(SYSTEM_PROMPT), ChatMessage::user(user)]
