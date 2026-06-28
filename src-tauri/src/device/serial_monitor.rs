@@ -191,7 +191,10 @@ mod tests {
 
     /// 端到端验证：start_with_callback 启动 COM4 监控 → send 发送 → 回调收到 ECHO 响应
     /// 依赖：COM4 已烧录回显程序（收到行后原样回显 ECHO:<内容>）
+    /// 注意：此测试依赖特定固件，M6/M8 端到端测试会改写 COM4 固件导致本测试失败，
+    /// 故标记 ignore，需手动单独运行（先烧录回显固件）：cargo test monitor_send_and_receive_echo -- --ignored
     #[test]
+    #[ignore]
     fn monitor_send_and_receive_echo() {
         let port = "COM4";
         // 先确认 COM4 可用（避免无硬件环境误失败）
