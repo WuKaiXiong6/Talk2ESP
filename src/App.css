@@ -223,6 +223,95 @@
 .outcome.fail { background: var(--color-danger-bg); color: var(--color-danger-text); }
 .verdict-badge { margin-left: auto; }
 
+/* #27 AI 思考子步骤可视化 */
+.thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+}
+.thinking-dots { display: inline-flex; gap: 3px; }
+.thinking-dots span {
+  width: 6px; height: 6px; border-radius: var(--radius-full);
+  background: var(--color-primary);
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.thinking-text { font-weight: 500; }
+
+.timeline-wrapper {
+  margin-top: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.llm-stats {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* #23 失败后下一步指引 */
+.failure-guidance {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-left: 4px solid var(--color-warning);
+  border-radius: var(--radius-md);
+}
+.failure-guidance-title { font-weight: 600; color: var(--color-warning-text); margin-bottom: var(--space-1); }
+.failure-guidance ul { margin: 0; padding-left: var(--space-5); }
+.failure-guidance li { color: var(--color-warning-text); font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); }
+
+/* #22 对话/日志标签页 */
+.msg-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-2);
+}
+.msg-tab {
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+  margin-bottom: -1px;
+}
+.msg-tab:hover { color: var(--color-text-primary); }
+.msg-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+
+/* #30 运行历史快照 */
+.run-history { margin-top: var(--space-3); padding: var(--space-4); }
+.run-history h4 { font-size: var(--font-size-base); margin-bottom: var(--space-2); }
+.run-history-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.run-history-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--color-bg-subtle);
+}
+.run-history-item.success { border-left: 3px solid var(--color-success); }
+.run-history-item.fail { border-left: 3px solid var(--color-danger); }
+.run-history-icon { flex-shrink: 0; }
+.run-history-req { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-primary); }
+.run-history-meta { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); flex-shrink: 0; }
+.run-history-time { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); flex-shrink: 0; }
+
 /* ===== 通用数据表格 ===== */
 .data-table { width: 100%; font-size: var(--font-size-sm); border-collapse: collapse; }
 .data-table th {

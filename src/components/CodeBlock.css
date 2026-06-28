@@ -1,0 +1,80 @@
+/* 文件路径：src/components/CodeBlock.css */
+/* 文件作用：代码展示块样式——语法高亮 + 行号 + 复制按钮 */
+/* 最后更新时间：2026-06-28-1240 */
+
+.code-block-wrapper {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-code);
+}
+
+.code-block-title {
+  padding: var(--space-1) var(--space-3);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-code);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.code-block-container {
+  position: relative;
+  overflow: auto;
+}
+
+.code-block-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: var(--radius-md);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-code);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+.code-block-container:hover .code-block-copy { opacity: 1; }
+.code-block-copy:hover { background: rgba(255, 255, 255, 0.22); }
+
+.code-block.hljs {
+  display: flex;
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--color-bg-code);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-code);
+}
+
+.code-block-gutter {
+  display: block;
+  text-align: right;
+  padding-right: var(--space-3);
+  margin-right: var(--space-3);
+  color: #6a6a6a;
+  user-select: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: pre;
+  flex-shrink: 0;
+}
+
+.code-block .language-cpp,
+.code-block .language-arduino,
+.code-block .language-plaintext {
+  display: block;
+  white-space: pre;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  padding: 0;
+}

@@ -1,0 +1,43 @@
+/* 文件路径：src/components/RequirementExamples.css */
+/* 文件作用：需求快捷示例样式 */
+/* 最后更新时间：2026-06-28-1240 */
+
+.requirement-examples {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.requirement-examples-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.requirement-examples-list {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.requirement-example-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  font-family: inherit;
+  transition: background var(--transition-fast);
+}
+
+.requirement-example-chip:hover {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}

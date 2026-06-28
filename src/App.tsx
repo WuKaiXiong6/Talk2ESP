@@ -42,6 +42,20 @@ function AppInner() {
   const [outcome, setOutcome] = useState<PipelineOutcome | null>(null);
   const [chatHistory, setChatHistory] = useState<ConversationMessage[]>([]);
   const [llmConfigured, setLlmConfigured] = useState<boolean>(true);
+  // #14/#28 阶段重试/耗时/LLM 统计跟踪
+  const [retryMap, setRetryMap] = useState<Record<string, { attempt: number; max: number; reason: string }>>({});
+  const [stageDurations, setStageDurations] = useState<Record<string, number>>({});
+  const [failReasonMap, setFailReasonMap] = useState<Record<string, string>>({});
+  const [llmStats, setLlmStats] = useState<{ durationMs: number; tokens?: number } | null>(null);
+  // #27 AI 思考子步骤可视化
+  const [thinking, setThinking] = useState<string>('');
+  // #30 运行历史快照（会话内）
+  const [runHistory, setRunHistory] = useState<{
+    id: string; requirement: string; chip: string; port: string;
+    success: boolean; summary: string; timestamp: string;
+  }[]>([]);
+  // 阶段开始时间记录（用于计算耗时）
+  const stageStartRef = useRef<Record<string, number>>({});
   const logEndRef = useRef<HTMLDivElement>(null);
   const stopFlagRef = useRef<boolean>(false);
 
@@ -130,6 +144,13 @@ function AppInner() {
     setCurrentState('coding');
     setProgress({ percent: 5, message: '启动中…' });
     setGeneratedCode(null);
+    // 重置阶段跟踪状态
+    setRetryMap({});
+    setStageDurations({});
+    setFailReasonMap({});
+    setLlmStats(null);
+    setThinking('正在分析需求并生成代码…');
+    stageStartRef.current = { coding: Date.now() };
     addLog(`启动全自动流水线 (端口=${selectedPort}, 芯片=${selectedChip})`);
 
     // 构造需求确认书（简化：从自然语言直接生成，实际可多轮澄清）
@@ -160,9 +181,25 @@ function AppInner() {
       addLog(`创建项目: ${project.id}`);
 
       const ch = new Channel<PipelineEvent>();
+      const codeGenStart = Date.now();
       ch.onmessage = (event) => {
         if (event.kind === 'StateChanged') {
+          // 记录上一阶段耗时
+          const prev = currentState;
+          if (prev && stageStartRef.current[prev]) {
+            const dur = Date.now() - stageStartRef.current[prev];
+            setStageDurations((m) => ({ ...m, [prev]: dur }));
+          }
           setCurrentState(event.data.state);
+          stageStartRef.current[event.data.state] = Date.now();
+          // #27 思考子步骤
+          const thinkLabel: Record<string, string> = {
+            coding: '正在分析需求并生成代码…',
+            compiling: '正在编译生成的代码…',
+            flashing: '正在烧录到设备…',
+            verifying: '正在读取串口输出并验证…',
+          };
+          setThinking(thinkLabel[event.data.state] ?? '');
           addLog(`▶ 状态: ${event.data.state}`);
         } else if (event.kind === 'Progress') {
           setProgress({ percent: event.data.percent, message: event.data.message });
@@ -171,13 +208,31 @@ function AppInner() {
           addLog(`[${event.data.stage}] ${event.data.message}`);
         } else if (event.kind === 'CodeGenerated') {
           setGeneratedCode({ main_ino: event.data.main_ino, explanation: event.data.explanation });
+          // #28 LLM 代码生成耗时统计
+          setLlmStats({ durationMs: Date.now() - codeGenStart });
+          setThinking('');
           addLog(`✓ AI 生成代码完成: ${event.data.explanation}`);
         } else if (event.kind === 'ToolOutput') {
           setLogs((l) => [...l, `  ${event.data.line}`]);
         } else if (event.kind === 'Retry') {
+          // #14 重试徽章跟踪
+          setRetryMap((m) => ({
+            ...m,
+            [event.data.stage]: { attempt: event.data.attempt, max: event.data.max, reason: event.data.reason },
+          }));
+          setFailReasonMap((m) => ({ ...m, [event.data.stage]: event.data.reason }));
           addLog(`↻ 重试 ${event.data.stage} (${event.data.attempt}/${event.data.max}): ${event.data.reason}`);
         } else if (event.kind === 'Done') {
+          // 记录最后阶段耗时
+          const lastState = currentState;
+          if (lastState && stageStartRef.current[lastState]) {
+            setStageDurations((m) => ({ ...m, [lastState]: Date.now() - stageStartRef.current[lastState] }));
+          }
           setProgress({ percent: event.data.success ? 100 : 0, message: event.data.summary });
+          setThinking('');
+          if (!event.data.success) {
+            setFailReasonMap((m) => ({ ...m, [currentState]: event.data.summary }));
+          }
           addLog(`■ 完成: ${event.data.summary}`);
         }
       };
@@ -186,6 +241,11 @@ function AppInner() {
         spec, port: selectedPort, projectId: project.id, onEvent: ch,
       });
       setOutcome(result);
+      // #30 运行历史快照（会话内）
+      setRunHistory((h) => [{
+        id: project.id, requirement, chip: selectedChip, port: selectedPort,
+        success: result.success, summary: result.summary, timestamp: new Date().toISOString(),
+      }, ...h].slice(0, 20));
       if (result.success) {
         addLog('✅ 全自动开发成功！');
         // #26 成功庆祝反馈：显著的成功通知 + 持续提示
@@ -262,6 +322,8 @@ function AppInner() {
                 chips={chips} requirement={requirement} running={running} currentState={currentState}
                 progress={progress} generatedCode={generatedCode} llmConfigured={llmConfigured}
                 chatHistory={chatHistory} logs={logs} outcome={outcome} logEndRef={logEndRef}
+                retryMap={retryMap} stageDurations={stageDurations} failReasonMap={failReasonMap}
+                llmStats={llmStats} thinking={thinking} runHistory={runHistory}
                 onRefreshDevices={refreshDevices} onPort={setSelectedPort} onChip={setSelectedChip}
                 onRequirement={setRequirement} onChat={chatWithAi} onRun={runAutoPipeline} onStop={stopPipeline}
                 onGoSettings={() => setView('settings')}
