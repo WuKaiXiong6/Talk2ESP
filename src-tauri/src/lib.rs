@@ -9,6 +9,7 @@ pub mod chips;
 pub mod safety;
 pub mod project;
 pub mod orchestrator;
+pub mod settings;
 
 use ai::openai_compat::OpenAiCompatProvider;
 use ai::{ChatMessage, FixSuggestion, GeneratedCode, LlmProvider, RequirementSpec, Verdict};
@@ -125,9 +126,21 @@ fn flash_sketch(
     })
 }
 
-/// M3：创建 LLM 适配器（从 .env.local/环境变量读配置）
+/// M3：创建 LLM 适配器（优先从用户设置读，回退 .env.local/环境变量）
 fn make_provider() -> Result<OpenAiCompatProvider, String> {
-    OpenAiCompatProvider::from_env()
+    let settings = settings::load_settings();
+    if settings::is_llm_configured(&settings) {
+        // 从用户设置构造
+        Ok(OpenAiCompatProvider::new(ai::openai_compat::OpenAiCompatConfig {
+            base_url: settings.llm.base_url,
+            api_key: settings.llm.api_key,
+            model: settings.llm.model,
+            max_tokens: settings.llm.max_tokens,
+        }))
+    } else {
+        // 回退到环境变量/.env.local（开发期）
+        OpenAiCompatProvider::from_env()
+    }
 }
 
 /// M3：通用对话
@@ -277,6 +290,24 @@ fn write_stage_log(
     Ok(path.to_string_lossy().to_string())
 }
 
+/// 加载用户设置
+#[tauri::command]
+fn load_settings() -> settings::Settings {
+    settings::load_settings()
+}
+
+/// 保存用户设置
+#[tauri::command]
+fn save_settings(settings: settings::Settings) -> Result<(), String> {
+    settings::save_settings(&settings)
+}
+
+/// 检查 LLM 是否已配置
+#[tauri::command]
+fn is_llm_configured() -> bool {
+    settings::is_llm_configured(&settings::load_settings())
+}
+
 /// M6：运行全自动流水线（需求确认书 → 代码 → 编译 → 烧录 → 验证）
 #[tauri::command]
 async fn run_full_pipeline(
@@ -285,13 +316,18 @@ async fn run_full_pipeline(
     project_id: String,
     on_event: Channel<PipelineEvent>,
 ) -> Result<PipelineOutcome, String> {
+    // 先检查 LLM 是否已配置，未配置给明确引导
+    let settings = settings::load_settings();
+    if !settings::is_llm_configured(&settings) {
+        return Err("LLM 未配置：请先到「设置」界面填写 Base URL、API Key、模型名".into());
+    }
     let provider = Arc::new(make_provider()?);
     let storage = Arc::new(tokio::sync::Mutex::new(ProjectStorage::from_default()));
     let config = PipelineConfig {
         project_id,
         spec,
         port,
-        auto_mode: true,
+        auto_mode: settings.automation.mode == "full",
     };
     run_pipeline(storage, provider, config, move |event| {
         let _ = on_event.send(event);
@@ -351,6 +387,9 @@ pub fn run() {
             write_main_code,
             read_main_code,
             write_stage_log,
+            load_settings,
+            save_settings,
+            is_llm_configured,
             run_full_pipeline,
             start_tick
         ])

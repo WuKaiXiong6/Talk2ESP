@@ -110,3 +110,26 @@ export interface PipelineOutcome {
   verdict: Verdict | null;
   summary: string;
 }
+
+export interface Settings {
+  llm: {
+    provider: string;
+    base_url: string;
+    api_key: string;
+    model: string;
+    max_tokens: number;
+  };
+  automation: {
+    mode: string;
+    confirm_before_flash: boolean;
+  };
+  pin_blacklist: {
+    extra_error: number[];
+    extra_warn: number[];
+  };
+  toolchain: {
+    arduino_cli_path: string;
+    default_baud: number;
+    verbose_log: boolean;
+  };
+}

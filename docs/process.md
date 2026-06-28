@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1835
+最后更新时间：2026-06-28-1852
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -327,6 +327,25 @@
   - TS 类型检查通过，后端编译无错误。
 - **结论**：通过
 - **遗留问题**：GUI 窗口内实际交互现象（进度条渲染、点击项目看详情）需用户运行确认。
+
+### 验证 2026-06-28-1852：用户反馈二（设置界面+暂停按钮+绿色免安装版）
+- **验证时间**：2026-06-28-1852
+- **验证对象**：用户第二轮反馈——设置界面缺失、无暂停按钮、配置不持久化、需绿色免安装版
+- **验证环境**：Windows 10，Tauri 2.11.3
+- **修复措施**：
+  1. **settings 模块**：新增 `src/settings/mod.rs`，Settings 含 LLM/自动化模式/引脚黑名单/工具链四类配置，持久化到 `%USERPROFILE%\.talk2esp\settings.json`；
+  2. **LLM 配置从 settings 读**：make_provider 优先从 settings 构造 OpenAiCompatProvider，回退 .env.local；run_full_pipeline 启动前检查 is_llm_configured，未配置返回明确引导错误；
+  3. **设置视图**：前端 SettingsView 含 LLM（供应商/Base URL/Key/模型/max_tokens）、自动化模式（full/step+烧录前确认）、引脚黑名单自定义、工具链高级（arduino-cli 路径/波特率/详细日志），保存即生效；
+  4. **暂停/终止按钮**：DevelopView 运行中显示「⏹ 终止」按钮，标记 stopFlag 停止接收；
+  5. **首启引导**：未配置 LLM 时导航栏显示⚠️警告 + 开发视图顶部提示「前往设置」链接，点一键开发自动跳设置页；
+  6. **绿色免安装版**：`dist-portable/Talk2ESP-绿色版/` 含 Talk2ESP.exe（14MB，前端资源嵌入）+ 使用说明.txt，解压即用不写注册表。
+- **观察现象**：
+  - settings 单元测试 2 项通过（default + is_llm_configured）；
+  - 全量 26 个单元测试通过，1 ignored，无回归；
+  - 绿色版 Talk2ESP.exe 启动正常（进程存活验证）；
+  - TS 类型检查通过，后端编译无错误。
+- **结论**：通过
+- **遗留问题**：①绿色版不含 arduino-cli（sidecar 未启用），用户机器需预装或设置中填路径；②暂停按钮当前是「停止接收+前端停止」，后端单次 await 无法中途杀进程，进行中的步骤会跑完（如 LLM 调用会等返回），后续可引入真正的进程取消。
 
 ---
 

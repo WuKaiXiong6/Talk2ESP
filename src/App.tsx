@@ -5,11 +5,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import type {
-  DeviceInfo, RequirementSpec, PipelineEvent, PipelineOutcome, ConversationMessage, Project,
+  DeviceInfo, RequirementSpec, PipelineEvent, PipelineOutcome, ConversationMessage, Project, Settings,
 } from './types';
 import './App.css';
 
-type View = 'develop' | 'devices' | 'projects' | 'monitor';
+type View = 'develop' | 'devices' | 'projects' | 'monitor' | 'settings';
 
 function App() {
   const [view, setView] = useState<View>('develop');
@@ -25,12 +25,15 @@ function App() {
   const [generatedCode, setGeneratedCode] = useState<{ main_ino: string; explanation: string } | null>(null);
   const [outcome, setOutcome] = useState<PipelineOutcome | null>(null);
   const [chatHistory, setChatHistory] = useState<ConversationMessage[]>([]);
+  const [llmConfigured, setLlmConfigured] = useState<boolean>(true);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const stopFlagRef = useRef<boolean>(false);
 
-  // 初始化：扫描设备 + 加载芯片列表
+  // 初始化：扫描设备 + 加载芯片列表 + 检查 LLM 配置
   useEffect(() => {
     refreshDevices();
     invoke<string[]>('list_chips').then(setChips).catch(() => {});
+    invoke<boolean>('is_llm_configured').then(setLlmConfigured).catch(() => {});
   }, []);
 
   // 日志自动滚动
@@ -84,10 +87,24 @@ function App() {
     setRunning(false);
   };
 
+  // 暂停/终止流水线（当前实现：标记停止，前端停止接收；后端因是单次 await 无法中途杀，但会尽快结束）
+  const stopPipeline = () => {
+    stopFlagRef.current = true;
+    setRunning(false);
+    addLog('■ 用户已请求终止（当前进行中的步骤完成后停止）');
+    setProgress((p) => ({ ...p, message: '正在终止…' }));
+  };
+
   // 一键全自动开发：需求 → 流水线
   const runAutoPipeline = async () => {
     if (!requirement.trim()) { addLog('请先输入需求'); return; }
     if (!selectedPort) { addLog('请先选择设备'); return; }
+    if (!llmConfigured) {
+      addLog('❌ LLM 未配置，请先到「设置」填写配置');
+      setView('settings');
+      return;
+    }
+    stopFlagRef.current = false;
     setRunning(true);
     setLogs([]);
     setOutcome(null);
@@ -173,6 +190,8 @@ function App() {
         <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>设备</button>
         <button className={view === 'projects' ? 'active' : ''} onClick={() => setView('projects')}>项目</button>
         <button className={view === 'monitor' ? 'active' : ''} onClick={() => setView('monitor')}>串口监控</button>
+        <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>设置</button>
+        {!llmConfigured && <span className="nav-warn">⚠️ 未配置 LLM</span>}
       </nav>
 
       <main className="main">
@@ -180,15 +199,17 @@ function App() {
           <DevelopView
             devices={devices} selectedPort={selectedPort} selectedChip={selectedChip}
             chips={chips} requirement={requirement} running={running} currentState={currentState}
-            progress={progress} generatedCode={generatedCode}
+            progress={progress} generatedCode={generatedCode} llmConfigured={llmConfigured}
             chatHistory={chatHistory} logs={logs} outcome={outcome} logEndRef={logEndRef}
             onRefreshDevices={refreshDevices} onPort={setSelectedPort} onChip={setSelectedChip}
-            onRequirement={setRequirement} onChat={chatWithAi} onRun={runAutoPipeline}
+            onRequirement={setRequirement} onChat={chatWithAi} onRun={runAutoPipeline} onStop={stopPipeline}
+            onGoSettings={() => setView('settings')}
           />
         )}
         {view === 'devices' && <DevicesView devices={devices} onRefresh={refreshDevices} />}
         {view === 'projects' && <ProjectsView />}
         {view === 'monitor' && <MonitorView />}
+        {view === 'settings' && <SettingsView onSaved={() => invoke<boolean>('is_llm_configured').then(setLlmConfigured)} />}
       </main>
     </div>
   );
@@ -197,8 +218,8 @@ function App() {
 // ========== 开发视图 ==========
 function DevelopView(props: any) {
   const { devices, selectedPort, selectedChip, chips, requirement, running, currentState,
-    progress, generatedCode, chatHistory, logs, outcome, logEndRef,
-    onRefreshDevices, onPort, onChip, onRequirement, onChat, onRun } = props;
+    progress, generatedCode, llmConfigured, chatHistory, logs, outcome, logEndRef,
+    onRefreshDevices, onPort, onChip, onRequirement, onChat, onRun, onStop, onGoSettings } = props;
 
   const stateLabel: Record<string, string> = {
     coding: '🧠 AI 生成代码', compiling: '⚙️ 编译中', flashing: '📡 烧录中',
@@ -207,6 +228,12 @@ function DevelopView(props: any) {
 
   return (
     <div className="develop-view">
+      {!llmConfigured && (
+        <div className="config-warn">
+          ⚠️ 尚未配置 LLM，无法进行 AI 开发。
+          <button className="link-btn" onClick={onGoSettings}>前往设置 →</button>
+        </div>
+      )}
       <div className="control-panel">
         <div className="control-row">
           <label>设备:</label>
@@ -241,6 +268,7 @@ function DevelopView(props: any) {
             <button className="primary" onClick={onRun} disabled={running || !requirement.trim() || !selectedPort}>
               {running ? '运行中…' : '🚀 一键全自动开发'}
             </button>
+            {running && <button className="danger" onClick={onStop}>⏹ 终止</button>}
           </div>
         </div>
 
@@ -457,6 +485,135 @@ function MonitorView() {
         <input value={sendText} onChange={(e) => setSendText(e.target.value)}
           placeholder="输入要发送的数据" onKeyDown={(e) => e.key === 'Enter' && send()} />
         <button onClick={send}>发送</button>
+      </div>
+    </div>
+  );
+}
+
+// ========== 设置视图 ==========
+function SettingsView({ onSaved }: { onSaved: () => void }) {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    invoke<Settings>('load_settings').then(setSettings).catch(() => {});
+  }, []);
+
+  const update = (path: string, value: any) => {
+    if (!settings) return;
+    const next = JSON.parse(JSON.stringify(settings));
+    const keys = path.split('.');
+    let obj = next;
+    for (let i = 0; i < keys.length - 1; i++) obj = obj[keys[i]];
+    obj[keys[keys.length - 1]] = value;
+    setSettings(next);
+    setSaved(false);
+  };
+
+  const save = async () => {
+    if (!settings) return;
+    setSaving(true);
+    try {
+      await invoke('save_settings', { settings });
+      setSaved(true);
+      onSaved();
+    } catch (e) { alert(`保存失败: ${e}`); }
+    setSaving(false);
+  };
+
+  if (!settings) return <div>加载设置中…</div>;
+
+  return (
+    <div className="settings-view">
+      <h3>设置</h3>
+      <p className="settings-hint">配置保存在 <code>%USERPROFILE%\.talk2esp\settings.json</code>，重启不丢失。</p>
+
+      <div className="settings-section">
+        <h4>LLM 配置</h4>
+        <div className="settings-row">
+          <label>供应商</label>
+          <select value={settings.llm.provider} onChange={(e) => update('llm.provider', e.target.value)}>
+            <option value="openai_compat">OpenAI 兼容（火山方舟/智谱/DeepSeek/通义等）</option>
+            <option value="claude">Claude（暂未实现）</option>
+          </select>
+        </div>
+        <div className="settings-row">
+          <label>Base URL</label>
+          <input value={settings.llm.base_url} onChange={(e) => update('llm.base_url', e.target.value)}
+            placeholder="https://ark.cn-beijing.volces.com/api/coding/v3" />
+        </div>
+        <div className="settings-row">
+          <label>API Key</label>
+          <input type="password" value={settings.llm.api_key} onChange={(e) => update('llm.api_key', e.target.value)}
+            placeholder="your-api-key" />
+        </div>
+        <div className="settings-row">
+          <label>模型名</label>
+          <input value={settings.llm.model} onChange={(e) => update('llm.model', e.target.value)}
+            placeholder="glm-5.2" />
+        </div>
+        <div className="settings-row">
+          <label>max_tokens</label>
+          <input type="number" value={settings.llm.max_tokens} onChange={(e) => update('llm.max_tokens', +e.target.value)} />
+          <span className="hint">推理模型建议 ≥ 8192</span>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h4>自动化模式</h4>
+        <div className="settings-row">
+          <label>模式</label>
+          <select value={settings.automation.mode} onChange={(e) => update('automation.mode', e.target.value)}>
+            <option value="full">全自动（连续执行）</option>
+            <option value="step">分步确认（每步需确认）</option>
+          </select>
+        </div>
+        <div className="settings-row">
+          <label>烧录前确认</label>
+          <input type="checkbox" checked={settings.automation.confirm_before_flash}
+            onChange={(e) => update('automation.confirm_before_flash', e.target.checked)} />
+          <span className="hint">开启后烧录前需手动确认</span>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h4>引脚黑名单自定义</h4>
+        <div className="settings-row">
+          <label>额外禁止引脚(逗号分隔)</label>
+          <input value={settings.pin_blacklist.extra_error.join(',')}
+            onChange={(e) => update('pin_blacklist.extra_error', e.target.value.split(',').map((s) => +s.trim()).filter((n) => !isNaN(n)))}
+            placeholder="如 9,10" />
+        </div>
+        <div className="settings-row">
+          <label>额外提示引脚(逗号分隔)</label>
+          <input value={settings.pin_blacklist.extra_warn.join(',')}
+            onChange={(e) => update('pin_blacklist.extra_warn', e.target.value.split(',').map((s) => +s.trim()).filter((n) => !isNaN(n)))}
+            placeholder="如 11,12" />
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h4>工具链 / 高级</h4>
+        <div className="settings-row">
+          <label>arduino-cli 路径</label>
+          <input value={settings.toolchain.arduino_cli_path} onChange={(e) => update('toolchain.arduino_cli_path', e.target.value)}
+            placeholder="留空则用内置或系统 PATH" />
+        </div>
+        <div className="settings-row">
+          <label>默认波特率</label>
+          <input type="number" value={settings.toolchain.default_baud} onChange={(e) => update('toolchain.default_baud', +e.target.value)} />
+        </div>
+        <div className="settings-row">
+          <label>详细日志</label>
+          <input type="checkbox" checked={settings.toolchain.verbose_log}
+            onChange={(e) => update('toolchain.verbose_log', e.target.checked)} />
+        </div>
+      </div>
+
+      <div className="settings-actions">
+        <button className="primary" onClick={save} disabled={saving}>{saving ? '保存中…' : '💾 保存设置'}</button>
+        {saved && <span className="saved-ok">✓ 已保存</span>}
       </div>
     </div>
   );
