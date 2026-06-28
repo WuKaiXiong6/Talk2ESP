@@ -17,10 +17,11 @@ import { DevicesView } from './views/DevicesView';
 import { ProjectsView } from './views/ProjectsView';
 import { MonitorView } from './views/MonitorView';
 import { SettingsView } from './views/SettingsView';
+import { HelpView } from './views/HelpView';
 import './theme/tokens.css';
 import './App.css';
 
-type View = 'develop' | 'devices' | 'projects' | 'monitor' | 'settings';
+type View = 'develop' | 'devices' | 'projects' | 'monitor' | 'settings' | 'help';
 
 const APP_VERSION = '0.1.0';
 
@@ -28,6 +29,8 @@ function AppInner() {
   const theme = useTheme();
   const notify = useNotifications();
   const [view, setView] = useState<View>('develop');
+  // #95 首次启动向导（localStorage 标记，仅首次显示）
+  const [showWizard, setShowWizard] = useState(() => !localStorage.getItem('talk2esp-onboarded'));
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [selectedPort, setSelectedPort] = useState<string>('');
@@ -219,6 +222,19 @@ function AppInner() {
     notify.success('代码已导出', 'main.ino');
   };
 
+  // #97 套用示例：将示例代码填入需求并切到开发视图（简化：填入需求框作为参考）
+  const useExample = (code: string, name: string) => {
+    setRequirement(`参考示例 ${name} 的代码实现类似功能：\n${code.slice(0, 200)}`);
+    setView('develop');
+  };
+
+  // #95 完成向导
+  const finishWizard = () => {
+    localStorage.setItem('talk2esp-onboarded', '1');
+    setShowWizard(false);
+    setView('help');
+  };
+
   // 一键全自动开发：需求 → 流水线
   const runAutoPipeline = async () => {
     if (!requirement.trim()) { addLog('请先输入需求'); return; }
@@ -356,7 +372,7 @@ function AppInner() {
   // #12 窗口标题动态反馈：根据运行状态/当前视图/设备更新标题
   useEffect(() => {
     const viewLabel: Record<View, string> = {
-      develop: '开发', devices: '设备', projects: '项目', monitor: '串口监控', settings: '设置',
+      develop: '开发', devices: '设备', projects: '项目', monitor: '串口监控', settings: '设置', help: '帮助',
     };
     const parts = ['Talk2ESP'];
     if (running) parts.push(`运行中 ${progress.percent}%`);
@@ -368,9 +384,9 @@ function AppInner() {
   // #92 全局快捷键：Ctrl+1~5 切换视图，Esc 终止运行
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+      if (e.ctrlKey && ['1', '2', '3', '4', '5', '6'].includes(e.key)) {
         e.preventDefault();
-        const views: View[] = ['develop', 'devices', 'projects', 'monitor', 'settings'];
+        const views: View[] = ['develop', 'devices', 'projects', 'monitor', 'settings', 'help'];
         setView(views[+e.key - 1]);
       } else if (e.key === 'Escape' && running) {
         stopPipeline();
@@ -446,6 +462,7 @@ function AppInner() {
             <button className={view === 'projects' ? 'active' : ''} onClick={() => setView('projects')}>项目</button>
             <button className={view === 'monitor' ? 'active' : ''} onClick={() => setView('monitor')}>串口监控</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>设置</button>
+            <button className={view === 'help' ? 'active' : ''} onClick={() => setView('help')}>帮助</button>
             {!llmConfigured && <span className="nav-warn">⚠️ 未配置 LLM</span>}
           </nav>
 
@@ -480,8 +497,19 @@ function AppInner() {
             {view === 'settings' && (
               <SettingsView onSaved={() => invoke<boolean>('is_llm_configured').then(setLlmConfigured)} />
             )}
+            {view === 'help' && (
+              <HelpView onUseExample={useExample} />
+            )}
           </main>
         </div>
+        {/* #95 首次启动向导遮罩 */}
+        {showWizard && (
+          <div className="wizard-overlay" role="dialog" aria-label="首次启动向导">
+            <div className="wizard-modal">
+              <HelpView wizard onUseExample={useExample} onCloseWizard={finishWizard} />
+            </div>
+          </div>
+        )}
         <NotificationCenter />
       </ErrorBoundary>
   );

@@ -1,0 +1,91 @@
+/* 文件路径：src/views/HelpView.css */
+/* 文件作用：帮助视图样式——向导横幅/标签页/示例卡片/FAQ */
+/* 最后更新时间：2026-06-28-1330 */
+
+.help-view { display: flex; flex-direction: column; gap: var(--space-3); max-width: 900px; }
+
+.wizard-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.help-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); }
+.help-tab {
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+  margin-bottom: -1px;
+}
+.help-tab:hover { color: var(--color-text-primary); }
+.help-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+
+.help-section { padding: var(--space-4); }
+.help-section h3 { margin-bottom: var(--space-3); }
+.help-desc { color: var(--color-text-muted); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
+
+.guide-steps { padding-left: var(--space-5); }
+.guide-steps li { margin-bottom: var(--space-3); }
+.guide-steps strong { color: var(--color-primary); display: block; margin-bottom: var(--space-1); }
+.guide-steps p { color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); }
+
+.feedback-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-light);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.examples-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.example-card {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.example-card:hover { border-color: var(--color-primary); background: var(--color-primary-light); }
+.example-card.selected { border-color: var(--color-primary); background: var(--color-primary-light); }
+.example-name { font-weight: 600; color: var(--color-primary); margin-bottom: var(--space-1); }
+.example-summary { font-size: var(--font-size-xs); color: var(--color-text-muted); line-height: 1.4; }
+
+.example-detail { margin-top: var(--space-3); }
+.example-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.example-detail-header h4 { font-size: var(--font-size-md); }
+.example-actions { display: flex; gap: var(--space-2); align-items: center; }
+
+.faq-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.faq-item {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+}
+.faq-q { cursor: pointer; font-weight: 500; color: var(--color-text-primary); }
+.faq-a { margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); }

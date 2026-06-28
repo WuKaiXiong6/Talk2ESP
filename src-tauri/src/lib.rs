@@ -258,6 +258,44 @@ fn get_chip_descriptor(chip: String) -> Result<chips::ChipDescriptor, String> {
     chips::load_descriptor(&chip)
 }
 
+/// #97 列出内置示例库：扫描 examples/ 目录，返回示例名与 .ino 内容摘要
+#[tauri::command]
+fn list_examples() -> Vec<ExampleInfo> {
+    let examples_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+    let mut result = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&examples_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let ino_path = path.join(format!("{name}.ino"));
+                if ino_path.exists() {
+                    let code = std::fs::read_to_string(&ino_path).unwrap_or_default();
+                    // 从头部注释提取简介（前几行非空注释）
+                    let summary: String = code
+                        .lines()
+                        .filter(|l| l.trim_start().starts_with("//"))
+                        .take(5)
+                        .map(|l| l.trim_start_matches("/").trim().to_string())
+                        .collect::<Vec<_>>()
+                        .join("；");
+                    result.push(ExampleInfo { name, code, summary });
+                }
+            }
+        }
+    }
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    result
+}
+
+/// #97 示例信息
+#[derive(serde::Serialize)]
+struct ExampleInfo {
+    name: String,
+    code: String,
+    summary: String,
+}
+
 /// M5：创建项目
 #[tauri::command]
 fn create_project(
@@ -599,6 +637,7 @@ pub fn run() {
             scan_dangers,
             list_chips,
             get_chip_descriptor,
+            list_examples,
             create_project,
             list_projects,
             load_project,
