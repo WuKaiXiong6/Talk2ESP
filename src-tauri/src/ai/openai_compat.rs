@@ -32,11 +32,11 @@ impl OpenAiCompatConfig {
             .map_err(|_| "未配置 TALK2ESP_LLM_API_KEY".to_string())?;
         let model = std::env::var("TALK2ESP_LLM_MODEL")
             .map_err(|_| "未配置 TALK2ESP_LLM_MODEL".to_string())?;
-        // glm-5.2 是推理模型，max_tokens 需较大（含 reasoning tokens）
+        // glm-5.2 是推理模型，max_tokens 需较大（含 reasoning tokens），diagnose 的 JSON 较长
         let max_tokens = std::env::var("TALK2ESP_LLM_MAX_TOKENS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(4096);
+            .unwrap_or(8192);
         Ok(Self { base_url, api_key, model, max_tokens })
     }
 }
@@ -160,12 +160,64 @@ impl LlmProvider for OpenAiCompatProvider {
     async fn diagnose(&self, error: &str, context_code: &str) -> Result<FixSuggestion, String> {
         let messages = build_diagnose_messages(error, context_code);
         let text = self.chat_raw(messages).await?;
-        self.extract_json::<FixSuggestion>(&text)
+        // 先尝试严格解析
+        match self.extract_json::<FixSuggestion>(&text) {
+            Ok(r) => Ok(r),
+            Err(_) => {
+                // 容错：JSON 可能因 max_tokens 截断，用正则提取 analysis 字段降级返回
+                let analysis = extract_field(&text, "analysis")
+                    .unwrap_or_else(|| format!("（JSON解析失败，原始响应已截断）{}", &text[..text.len().min(200)]));
+                Ok(FixSuggestion {
+                    analysis,
+                    fixed_main_ino: extract_field(&text, "fixed_main_ino"),
+                    fixed_test_harness_ino: extract_field(&text, "fixed_test_harness_ino"),
+                    parameter_changes: extract_field(&text, "parameter_changes"),
+                })
+            }
+        }
     }
 
     async fn judge(&self, serial_output: &str, expectation: &str) -> Result<Verdict, String> {
         let messages = build_judge_messages(serial_output, expectation);
         let text = self.chat_raw(messages).await?;
         self.extract_json::<Verdict>(&text)
+    }
+}
+
+/// 从可能被截断的 JSON 文本中正则提取某字符串字段的值（容错）
+/// 匹配 "field": "value" 或 "field": null
+fn extract_field(text: &str, field: &str) -> Option<String> {
+    // 匹配 "field": "..." （值可能因截断不闭合，取到行尾或下一个字段前）
+    let pattern = format!(r#""{field}"\s*:\s*"(?:[^"\\]|\\.)*"#);
+    if let Ok(re) = regex::Regex::new(&pattern) {
+        if let Some(m) = re.find(text) {
+            // 提取冒号后的引号内容
+            let after = m.as_str().splitn(2, ':').nth(1)?;
+            let v = after.trim().trim_start_matches('"');
+            // 去除末尾可能的未闭合引号
+            return Some(v.trim_end_matches('"').to_string());
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_field_works() {
+        let json = r#"{"analysis": "测试分析", "fixed_main_ino": null}"#;
+        assert_eq!(extract_field(json, "analysis"), Some("测试分析".into()));
+        assert_eq!(extract_field(json, "fixed_main_ino"), None);
+    }
+
+    #[test]
+    fn extract_field_truncated() {
+        // 模拟被截断的 JSON（fixed_main_ino 的值未闭合）
+        let json = r#"{"analysis": "根因是串口时序", "fixed_main_ino": "void setup(){Serial.begin(11"#;
+        assert_eq!(extract_field(json, "analysis"), Some("根因是串口时序".into()));
+        // 截断的字段也能提取到部分值
+        assert!(extract_field(json, "fixed_main_ino").is_some());
     }
 }

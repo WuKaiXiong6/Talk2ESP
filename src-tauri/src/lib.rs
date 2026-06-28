@@ -8,15 +8,18 @@ pub mod ai;
 pub mod chips;
 pub mod safety;
 pub mod project;
+pub mod orchestrator;
 
 use ai::openai_compat::OpenAiCompatProvider;
 use ai::{ChatMessage, FixSuggestion, GeneratedCode, LlmProvider, RequirementSpec, Verdict};
 use device::serial_monitor::{SerialLine, SerialMonitor};
 use device::DeviceInfo;
+use orchestrator::{run_pipeline, PipelineConfig, PipelineEvent, PipelineOutcome};
 use project::{ConversationMessage, Project, ProjectStorage, StageLog};
 use safety::{check_code_pins, scan_dangerous_ops, DangerReport, PinViolations};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -274,6 +277,28 @@ fn write_stage_log(
     Ok(path.to_string_lossy().to_string())
 }
 
+/// M6：运行全自动流水线（需求确认书 → 代码 → 编译 → 烧录 → 验证）
+#[tauri::command]
+async fn run_full_pipeline(
+    spec: RequirementSpec,
+    port: String,
+    project_id: String,
+    on_event: Channel<PipelineEvent>,
+) -> Result<PipelineOutcome, String> {
+    let provider = Arc::new(make_provider()?);
+    let storage = Arc::new(tokio::sync::Mutex::new(ProjectStorage::from_default()));
+    let config = PipelineConfig {
+        project_id,
+        spec,
+        port,
+        auto_mode: true,
+    };
+    run_pipeline(storage, provider, config, move |event| {
+        let _ = on_event.send(event);
+    })
+    .await
+}
+
 /// Channel 流式通信验证（M0 遗留）
 #[derive(Serialize, Clone)]
 #[serde(tag = "event", content = "data")]
@@ -326,6 +351,7 @@ pub fn run() {
             write_main_code,
             read_main_code,
             write_stage_log,
+            run_full_pipeline,
             start_tick
         ])
         .run(tauri::generate_context!())
