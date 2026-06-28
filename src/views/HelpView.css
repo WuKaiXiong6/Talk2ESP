@@ -1,6 +1,6 @@
 /* 文件路径：src/views/HelpView.css */
-/* 文件作用：帮助视图样式——向导横幅/标签页/示例卡片/FAQ */
-/* 最后更新时间：2026-06-28-1330 */
+/* 文件作用：帮助视图样式——向导横幅/标签页/示例卡片/FAQ/反馈表单(#99) */
+/* 最后更新时间：2026-06-29-0130 */
 
 .help-view { display: flex; flex-direction: column; gap: var(--space-3); max-width: 900px; }
 
@@ -89,3 +89,15 @@
 }
 .faq-q { cursor: pointer; font-weight: 500; color: var(--color-text-primary); }
 .faq-a { margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); }
+
+/* #99 反馈表单 */
+.feedback-form { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
+.feedback-row { display: flex; flex-direction: column; gap: var(--space-1); }
+.feedback-row label { font-weight: 500; font-size: var(--font-size-sm); }
+.feedback-row select, .feedback-row textarea {
+  padding: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md);
+  font-family: inherit; font-size: var(--font-size-sm); background: var(--color-bg-surface); color: var(--color-text-primary);
+}
+.feedback-row textarea { resize: vertical; min-height: 120px; }
+.feedback-row select:focus, .feedback-row textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: var(--shadow-focus); }
+.feedback-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }

@@ -1,5 +1,5 @@
 // 文件路径：src/views/DevelopView.tsx
-// 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照/按钮内联阶段(#21)
+// 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照/按钮内联阶段(#21)/多模型对比(#80)/多设备并行(#50)
 // 最后更新时间：2026-06-29-0130
 
 import { useEffect, useState, type RefObject } from 'react';
@@ -77,6 +77,13 @@ export interface DevelopViewProps {
   // #19 需求历史
   reqHistory: string[];
   onClearReqHistory?: () => void;
+  // #50 多设备并行任务
+  parallelTasks: {
+    id: string; port: string; chip: string; requirement: string;
+    state: string; percent: number; success: boolean | null; summary: string;
+  }[];
+  onLaunchParallel: (port: string, chip: string, requirement: string) => void;
+  onCancelParallel: (taskId: string) => void;
 }
 
 /// 日志/对话 子标签页
@@ -90,6 +97,7 @@ export function DevelopView(props: DevelopViewProps) {
     onRefreshDevices, onPort, onChip, onRequirement, onChat, onRun, onStop, onGoSettings,
     onRerunEdited, onExportCode, onRegenerate, onConfirmFlash,
     reqHistory, onClearReqHistory,
+    parallelTasks, onLaunchParallel, onCancelParallel,
   } = props;
 
   // #22 对话区/日志区分离
@@ -103,6 +111,9 @@ export function DevelopView(props: DevelopViewProps) {
   const [compareModel, setCompareModel] = useState('');
   const [comparing, setComparing] = useState(false);
   const [compareResult, setCompareResult] = useState<{ current: string; other: string; otherModel: string } | null>(null);
+  // #50 多设备并行任务输入
+  const [parallelPort, setParallelPort] = useState('');
+  const [parallelReq, setParallelReq] = useState('');
   // 最近一次 AI 修复前的代码（用于 diff）；首版生成时为空
   const lastFixedCode = '';
   // #84 格式检查 + #82 引脚高亮
@@ -408,6 +419,46 @@ export function DevelopView(props: DevelopViewProps) {
                 <div className="compare-col-title">{compareResult.otherModel}</div>
                 <CodeBlock code={compareResult.other || '（生成失败或为空）'} language="arduino" maxHeight="280px" title={compareResult.otherModel} />
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* #50 多设备并行任务 */}
+        <div className="parallel-section">
+          <h4>⚡ 多设备并行任务</h4>
+          <p className="hint">为不同设备并行运行不同需求的流水线，各自独立跟踪进度，不影响当前焦点任务。</p>
+          <div className="parallel-input-row">
+            <select value={parallelPort} onChange={(e) => setParallelPort(e.target.value)} disabled={running}>
+              <option value="">选择端口…</option>
+              {devices.map((d) => <option key={d.port} value={d.port}>{d.port}{d.chip ? ` (${d.chip})` : ''}</option>)}
+            </select>
+            <input
+              value={parallelReq}
+              onChange={(e) => setParallelReq(e.target.value)}
+              placeholder="该设备的开发需求"
+              disabled={running}
+            />
+            <Button variant="secondary" size="sm" onClick={() => { onLaunchParallel(parallelPort, selectedChip, parallelReq); setParallelReq(''); }} disabled={running || !parallelPort || !parallelReq.trim()}>
+              ➕ 启动并行任务
+            </Button>
+          </div>
+          {parallelTasks.length > 0 && (
+            <div className="parallel-tasks">
+              {parallelTasks.map((t) => (
+                <div key={t.id} className={`parallel-task ${t.success === false ? 'failed' : t.success === true ? 'success' : ''}`}>
+                  <div className="parallel-task-head">
+                    <strong>{t.port}</strong>
+                    <span className="parallel-task-req">{t.requirement.slice(0, 40)}</span>
+                    <button className="parallel-task-close" onClick={() => onCancelParallel(t.id)}>×</button>
+                  </div>
+                  <div className="parallel-task-bar">
+                    <div className="parallel-task-fill" style={{ width: `${t.percent}%` }} />
+                  </div>
+                  <div className="parallel-task-status">
+                    {t.success === null ? `${t.state} ${t.percent}%` : t.success ? `✅ ${t.summary}` : `❌ ${t.summary}`}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

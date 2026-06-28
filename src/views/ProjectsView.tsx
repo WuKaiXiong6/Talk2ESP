@@ -1,6 +1,6 @@
 // 文件路径：src/views/ProjectsView.tsx
-// 文件作用：项目管理视图——搜索/排序/重命名/导入导出/删除二次确认/状态刷新/卡片化
-// 最后更新时间：2026-06-28-1255
+// 文件作用：项目管理视图——搜索/排序/重命名/导入导出/删除二次确认+回收站(#58)/状态刷新/卡片化
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -38,6 +38,9 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
   // #60 分页
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
+  // #58 回收站
+  const [trash, setTrash] = useState<string[]>([]);
+  const [showTrash, setShowTrash] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -106,16 +109,45 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
     } catch (e) { notify.error('重命名失败', String(e)); }
   };
 
-  // #59 删除二次确认
+  // #59 删除二次确认（#58 改为移入回收站）
   const confirmDelete = async () => {
     if (!confirmDeleteId) return;
     try {
       await invoke('delete_project', { projectId: confirmDeleteId });
-      notify.success('项目已删除');
+      notify.success('项目已移入回收站', '可在回收站恢复');
       if (selected?.id === confirmDeleteId) { setSelected(null); setDetail(null); }
       setConfirmDeleteId(null);
       refresh();
     } catch (e) { notify.error('删除失败', String(e)); }
+  };
+
+  // #58 回收站操作
+  const refreshTrash = () => {
+    invoke<string[]>('list_trash').then(setTrash).catch(() => setTrash([]));
+  };
+  const restoreFromTrash = async (id: string) => {
+    try {
+      await invoke('restore_project', { projectId: id });
+      notify.success('项目已恢复', id);
+      refreshTrash();
+      refresh();
+    } catch (e) { notify.error('恢复失败', String(e)); }
+  };
+  const purgeFromTrash = async (id: string) => {
+    if (!confirm(`彻底删除项目 ${id}？此操作不可恢复。`)) return;
+    try {
+      await invoke('purge_trash_project', { projectId: id });
+      notify.success('已彻底删除', id);
+      refreshTrash();
+    } catch (e) { notify.error('删除失败', String(e)); }
+  };
+  const emptyAllTrash = async () => {
+    if (!confirm('清空整个回收站？所有已删除项目将不可恢复。')) return;
+    try {
+      const n = await invoke<number>('empty_trash');
+      notify.success('回收站已清空', `已彻底删除 ${n} 个项目`);
+      refreshTrash();
+    } catch (e) { notify.error('清空失败', String(e)); }
   };
 
   // #56 导出
@@ -178,7 +210,7 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
         </div>
         {confirmDeleteId === selected.id && (
           <div className="confirm-dialog" role="alertdialog">
-            <span>确认删除项目「{selected.name}」？此操作不可恢复。</span>
+            <span>确认删除项目「{selected.name}」？项目将移入回收站，可在回收站恢复。</span>
             <div className="confirm-actions">
               <Button variant="danger" size="sm" onClick={confirmDelete}>确认删除</Button>
               <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>取消</Button>
@@ -221,7 +253,36 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
           <option value="name">按名称</option>
           <option value="state">按状态</option>
         </select>
+        {/* #58 回收站入口 */}
+        <Button variant="ghost" size="sm" onClick={() => { setShowTrash((v) => !v); if (!showTrash) refreshTrash(); }}>
+          🗑 回收站 {trash.length > 0 && `(${trash.length})`}
+        </Button>
       </div>
+
+      {/* #58 回收站面板 */}
+      {showTrash && (
+        <Card className="trash-panel">
+          <div className="trash-header">
+            <h4>回收站（{trash.length}）</h4>
+            {trash.length > 0 && (
+              <Button variant="danger" size="sm" onClick={emptyAllTrash}>清空回收站</Button>
+            )}
+          </div>
+          {trash.length === 0 ? (
+            <p className="empty-inline">回收站为空</p>
+          ) : (
+            <ul className="trash-list">
+              {trash.map((id) => (
+                <li key={id} className="trash-item">
+                  <span className="trash-id">{id}</span>
+                  <Button variant="secondary" size="sm" onClick={() => restoreFromTrash(id)}>↩ 恢复</Button>
+                  <Button variant="ghost" size="sm" onClick={() => purgeFromTrash(id)}>✕ 彻底删除</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
 
       {loading ? (
         <SkeletonTable rows={3} cols={5} />
@@ -266,7 +327,7 @@ export function ProjectsView({ onGoDevelop }: ProjectsViewProps) {
               </div>
               {confirmDeleteId === p.id && (
                 <div className="confirm-dialog" role="alertdialog" onClick={(e) => e.stopPropagation()}>
-                  <span>确认删除？不可恢复</span>
+                  <span>确认删除？移入回收站可恢复</span>
                   <div className="confirm-actions">
                     <Button variant="danger" size="sm" onClick={confirmDelete}>删除</Button>
                     <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>取消</Button>

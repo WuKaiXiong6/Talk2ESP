@@ -397,11 +397,39 @@ fn save_project(project: Project, storage: State<'_, Mutex<ProjectStorage>>) -> 
     storage.save_project(&project)
 }
 
-/// M5：删除项目
+/// M5：删除项目（#58 移到回收站，可恢复）
 #[tauri::command]
 fn delete_project(project_id: String, storage: State<'_, Mutex<ProjectStorage>>) -> Result<(), String> {
     let storage = storage.lock().unwrap();
     storage.delete_project(&project_id)
+}
+
+/// #58 列出回收站中的项目 id
+#[tauri::command]
+fn list_trash(storage: State<'_, Mutex<ProjectStorage>>) -> Result<Vec<String>, String> {
+    let storage = storage.lock().unwrap();
+    storage.list_trash()
+}
+
+/// #58 恢复回收站中的项目
+#[tauri::command]
+fn restore_project(project_id: String, storage: State<'_, Mutex<ProjectStorage>>) -> Result<(), String> {
+    let storage = storage.lock().unwrap();
+    storage.restore_project(&project_id)
+}
+
+/// #58 彻底删除回收站中的指定项目（不可恢复）
+#[tauri::command]
+fn purge_trash_project(project_id: String, storage: State<'_, Mutex<ProjectStorage>>) -> Result<(), String> {
+    let storage = storage.lock().unwrap();
+    storage.purge_trash_project(&project_id)
+}
+
+/// #58 清空整个回收站（不可恢复），返回清空的项目数
+#[tauri::command]
+fn empty_trash(storage: State<'_, Mutex<ProjectStorage>>) -> Result<usize, String> {
+    let storage = storage.lock().unwrap();
+    storage.empty_trash()
 }
 
 /// #54 重命名项目
@@ -791,6 +819,10 @@ pub fn run() {
             load_project,
             save_project,
             delete_project,
+            list_trash,
+            restore_project,
+            purge_trash_project,
+            empty_trash,
             rename_project,
             duplicate_project,
             export_project,

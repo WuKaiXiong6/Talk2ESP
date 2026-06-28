@@ -1,6 +1,6 @@
 // 文件路径：src/views/HelpView.tsx
-// 文件作用：帮助视图——首次启动向导 + 内置帮助/FAQ + 示例库浏览套用 + 反馈入口
-// 最后更新时间：2026-06-28-1330
+// 文件作用：帮助视图——首次启动向导 + 内置帮助/FAQ + 示例库浏览套用 + 反馈表单(#99)
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -39,7 +39,10 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
   const notify = useNotifications();
   const [examples, setExamples] = useState<ExampleInfo[]>([]);
   const [selectedExample, setSelectedExample] = useState<ExampleInfo | null>(null);
-  const [tab, setTab] = useState<'guide' | 'examples' | 'faq'>(wizard ? 'guide' : 'examples');
+  const [tab, setTab] = useState<'guide' | 'examples' | 'faq' | 'feedback'>(wizard ? 'guide' : 'examples');
+  // #99 反馈表单
+  const [fbType, setFbType] = useState('bug');
+  const [fbText, setFbText] = useState('');
 
   useEffect(() => {
     invoke<ExampleInfo[]>('list_examples').then(setExamples).catch(() => {});
@@ -58,6 +61,7 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
         <button className={`help-tab ${tab === 'guide' ? 'active' : ''}`} onClick={() => setTab('guide')}>📖 快速上手</button>
         <button className={`help-tab ${tab === 'examples' ? 'active' : ''}`} onClick={() => setTab('examples')}>🧪 示例库</button>
         <button className={`help-tab ${tab === 'faq' ? 'active' : ''}`} onClick={() => setTab('faq')}>❓ 常见问题</button>
+        <button className={`help-tab ${tab === 'feedback' ? 'active' : ''}`} onClick={() => setTab('feedback')}>💬 反馈</button>
       </div>
 
       {tab === 'guide' && (
@@ -80,7 +84,7 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
           {/* #99 反馈入口 */}
           <div className="feedback-entry">
             <span>遇到问题或有建议？</span>
-            <Button variant="secondary" size="sm" onClick={() => notify.info('反馈入口', '请通过 GitHub Issues 或项目仓库提交反馈')}>💬 反馈</Button>
+            <Button variant="secondary" size="sm" onClick={() => setTab('feedback')}>💬 填写反馈</Button>
           </div>
         </Card>
       )}
@@ -130,6 +134,65 @@ export function HelpView({ wizard, onUseExample, onCloseWizard }: HelpViewProps)
                 <p className="faq-a">{item.a}</p>
               </details>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {/* #99 反馈表单 */}
+      {tab === 'feedback' && (
+        <Card className="help-section">
+          <h3>问题反馈 / 功能建议</h3>
+          <p className="help-desc">填写反馈类型与描述，生成预填内容的 GitHub Issue 链接，或复制文本自行提交。</p>
+          <div className="feedback-form">
+            <div className="feedback-row">
+              <label>反馈类型</label>
+              <select value={fbType} onChange={(e) => setFbType(e.target.value)}>
+                <option value="bug">🐛 Bug 报告</option>
+                <option value="feature">✨ 功能建议</option>
+                <option value="question">❓ 使用疑问</option>
+                <option value="other">📝 其他</option>
+              </select>
+            </div>
+            <div className="feedback-row">
+              <label>详细描述</label>
+              <textarea
+                value={fbText}
+                onChange={(e) => setFbText(e.target.value)}
+                placeholder="请描述遇到的问题或期望的功能，包括操作步骤、预期与实际现象、设备型号等"
+                rows={6}
+              />
+            </div>
+            <div className="feedback-actions">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!fbText.trim()}
+                onClick={() => {
+                  const typeLabel = { bug: 'Bug报告', feature: '功能建议', question: '使用疑问', other: '其他' }[fbType] || '反馈';
+                  const title = encodeURIComponent(`[${typeLabel}] ${fbText.slice(0, 40)}`);
+                  const body = encodeURIComponent(`## 反馈类型\n${typeLabel}\n\n## 详细描述\n${fbText}\n\n## 环境\n- 应用: Talk2ESP\n- 提交时间: ${new Date().toLocaleString('zh-CN')}\n`);
+                  const url = `https://github.com/Wukaixiong/Talk2ESP/issues/new?title=${title}&body=${body}`;
+                  window.open(url, '_blank');
+                  notify.success('已打开 GitHub Issue', '请在浏览器完成提交');
+                }}
+              >
+                🔗 生成 GitHub Issue
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!fbText.trim()}
+                onClick={() => {
+                  const text = `【${fbType}】\n${fbText}`;
+                  navigator.clipboard?.writeText(text).then(
+                    () => notify.success('已复制', '反馈内容已复制到剪贴板'),
+                    () => notify.error('复制失败', '请手动选择文本复制'),
+                  );
+                }}
+              >
+                📋 复制文本
+              </Button>
+            </div>
           </div>
         </Card>
       )}

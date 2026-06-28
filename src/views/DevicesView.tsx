@@ -1,6 +1,6 @@
 // 文件路径：src/views/DevicesView.tsx
-// 文件作用：设备管理视图——设备卡片化 + 详情 + 热插拔感知 + 识别失败引导 + 占用冲突 + 连接测试 + 驱动检测 + 固件信息(#49)
-// 最后更新时间：2026-06-29-0057
+// 文件作用：设备管理视图——设备卡片化 + 详情 + 热插拔感知 + 识别失败引导 + 占用冲突 + 连接测试 + 驱动检测 + 固件信息解析(#49)
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -110,13 +110,28 @@ export function DevicesView(props: DevicesViewProps) {
     setTesting(null);
   };
 
-  // #49 读取设备固件信息
+  // #49 读取设备固件信息：解析关键字段结构化展示 + 保留原始输出
   const [readingFw, setReadingFw] = useState<string | null>(null);
+  const [fwInfo, setFwInfo] = useState<{ port: string; raw: string; parsed: Record<string, string> } | null>(null);
   const readFirmware = async (port: string) => {
     setReadingFw(port);
+    setFwInfo(null);
     try {
       const info = await invoke<string>('read_firmware_info', { port });
-      notify.info(`${port} 固件信息`, info.slice(0, 200));
+      // 启发式解析 esptool image_info 输出的常见字段
+      const parsed: Record<string, string> = {};
+      for (const line of info.split(/\r?\n/)) {
+        const m = line.match(/^\s*([A-Za-z][\w\s/]+?)\s*:\s*(.+)$/);
+        if (m) {
+          const key = m[1].trim();
+          const val = m[2].trim();
+          if (/image size|entry|app name|version|secure|hash|chip/i.test(key)) {
+            parsed[key] = val;
+          }
+        }
+      }
+      setFwInfo({ port, raw: info, parsed });
+      notify.success(`${port} 固件信息已读取`, Object.keys(parsed).length > 0 ? `${Object.keys(parsed).length} 个关键字段` : '查看原始输出');
     } catch (e) {
       notify.error('固件信息读取失败', String(e));
     }
@@ -236,6 +251,20 @@ export function DevicesView(props: DevicesViewProps) {
                 <IconButton label="串口监控" onClick={onGoMonitor}>📡</IconButton>
                 <IconButton label="详情" onClick={() => setExpanded(expanded === d.port ? null : d.port)}>ℹ</IconButton>
               </div>
+              {/* #49 固件信息结构化展示 */}
+              {fwInfo?.port === d.port && (
+                <div className="fw-info">
+                  {Object.keys(fwInfo.parsed).length > 0 ? (
+                    <dl className="fw-fields">
+                      {Object.entries(fwInfo.parsed).map(([k, v]) => (
+                        <div key={k} className="fw-field"><dt>{k}</dt><dd>{v}</dd></div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <pre className="fw-raw">{fwInfo.raw.slice(0, 500)}</pre>
+                  )}
+                </div>
+              )}
               {expanded === d.port && (
                 <div className="device-detail">
                   <div className="device-field"><span>厂商</span><strong>{d.manufacturer ?? '-'}</strong></div>

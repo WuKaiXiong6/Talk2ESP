@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/project/storage.rs
-// 文件作用：项目文件夹持久化，按 PRD 3.4 结构读写代码/对话/日志/元数据
-// 最后更新时间：2026-06-29-0057
+// 文件作用：项目文件夹持久化，按 PRD 3.4 结构读写代码/对话/日志/元数据，含回收站(#58)
+// 最后更新时间：2026-06-29-0130
 
 use crate::project::model::{
     ConversationMessage, PinBlacklistSnapshot, Project, ProjectState, StageLog,
@@ -144,6 +144,10 @@ impl ProjectStorage {
         for entry in fs::read_dir(&self.root).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let id = entry.file_name().to_string_lossy().to_string();
+            // #58 排除回收站目录，不计入项目列表
+            if id == ".trash" {
+                continue;
+            }
             if let Ok(p) = self.load_project(&id) {
                 projects.push(p);
             }
@@ -156,9 +160,80 @@ impl ProjectStorage {
     pub fn delete_project(&self, project_id: &str) -> Result<(), String> {
         let dir = self.project_dir(project_id);
         if dir.exists() {
-            fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+            // #58 移到回收站而非直接删除，可恢复
+            let trash_root = self.trash_dir();
+            fs::create_dir_all(&trash_root).map_err(|e| e.to_string())?;
+            let trash_dir = trash_root.join(project_id);
+            if trash_dir.exists() {
+                // 回收站已有同名（理论上 id 唯一，保险起见先清掉）
+                fs::remove_dir_all(&trash_dir).map_err(|e| e.to_string())?;
+            }
+            fs::rename(&dir, &trash_dir).map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    /// #58 回收站目录
+    fn trash_dir(&self) -> PathBuf {
+        self.root.join(".trash")
+    }
+
+    /// #58 列出回收站中的项目 id（目录名）
+    pub fn list_trash(&self) -> Result<Vec<String>, String> {
+        let trash = self.trash_dir();
+        if !trash.exists() {
+            return Ok(Vec::new());
+        }
+        let mut ids = Vec::new();
+        for entry in fs::read_dir(&trash).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if entry.path().is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    ids.push(name.to_string());
+                }
+            }
+        }
+        Ok(ids)
+    }
+
+    /// #58 从回收站恢复项目（移回项目根目录）
+    pub fn restore_project(&self, project_id: &str) -> Result<(), String> {
+        let trashed = self.trash_dir().join(project_id);
+        if !trashed.exists() {
+            return Err(format!("回收站中无项目 {project_id}"));
+        }
+        let dest = self.project_dir(project_id);
+        if dest.exists() {
+            return Err(format!("项目 {project_id} 已存在，恢复会覆盖，请先处理"));
+        }
+        fs::rename(&trashed, &dest).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// #58 彻底删除回收站中的指定项目（不可恢复）
+    pub fn purge_trash_project(&self, project_id: &str) -> Result<(), String> {
+        let trashed = self.trash_dir().join(project_id);
+        if trashed.exists() {
+            fs::remove_dir_all(&trashed).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// #58 清空整个回收站（不可恢复）
+    pub fn empty_trash(&self) -> Result<usize, String> {
+        let trash = self.trash_dir();
+        if !trash.exists() {
+            return Ok(0);
+        }
+        let mut count = 0;
+        for entry in fs::read_dir(&trash).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if entry.path().is_dir() {
+                fs::remove_dir_all(entry.path()).map_err(|e| e.to_string())?;
+                count += 1;
+            }
+        }
+        Ok(count)
     }
 
     /// #54 重命名项目（仅更新 name 字段，不改变 id 与目录）
@@ -182,7 +257,8 @@ impl ProjectStorage {
         let project_count = fs::read_dir(projects_dir)
             .map_err(|e| e.to_string())?
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().is_dir())
+            // #58 排除回收站目录，不计入项目数
+            .filter(|e| e.path().is_dir() && e.file_name() != ".trash")
             .count();
 
         if log_retention_days > 0 {

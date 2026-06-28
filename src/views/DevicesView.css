@@ -1,6 +1,6 @@
 /* 文件路径：src/views/DevicesView.css */
-/* 文件作用：设备管理视图样式——卡片网格 + 热插拔事件 + 驱动/连接状态 */
-/* 最后更新时间：2026-06-28-1250 */
+/* 文件作用：设备管理视图样式——卡片网格 + 热插拔事件 + 驱动/连接状态 + 固件信息(#49) */
+/* 最后更新时间：2026-06-29-0130 */
 
 .devices-view { display: flex; flex-direction: column; gap: var(--space-3); }
 
@@ -104,3 +104,17 @@
   flex-direction: column;
   gap: var(--space-1);
 }
+
+/* #49 固件信息展示 */
+.fw-info {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-bg-code);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+.fw-fields { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-2); }
+.fw-field { display: contents; }
+.fw-field dt { color: var(--color-text-secondary); font-family: var(--font-mono); }
+.fw-field dd { margin: 0; color: var(--color-text-code); font-family: var(--font-mono); word-break: break-all; }
+.fw-raw { margin: 0; color: var(--color-text-code); font-family: var(--font-mono); white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow-y: auto; }

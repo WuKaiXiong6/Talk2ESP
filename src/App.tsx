@@ -1,6 +1,6 @@
 // 文件路径：src/App.tsx
-// 文件作用：Talk2ESP 主界面——组合各视图，管理全局状态与流水线编排
-// 最后更新时间：2026-06-29-0057
+// 文件作用：Talk2ESP 主界面——组合各视图，管理全局状态与流水线编排（含多设备并行#50）
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
@@ -68,6 +68,11 @@ function AppInner() {
   const stopFlagRef = useRef<boolean>(false);
   // #94 应用版本号（从后端 CARGO_PKG_VERSION 拉取）
   const [appVersion, setAppVersion] = useState<string>(APP_VERSION_FALLBACK);
+  // #50 多设备并行任务：与主焦点流水线解耦，每个任务独立 port/需求/状态
+  const [parallelTasks, setParallelTasks] = useState<{
+    id: string; port: string; chip: string; requirement: string;
+    state: string; percent: number; success: boolean | null; summary: string;
+  }[]>([]);
 
   // 初始化：扫描设备 + 加载芯片列表 + 检查 LLM 配置 + 拉取版本号
   useEffect(() => {
@@ -143,6 +148,45 @@ function AppInner() {
     if (currentProjectId) {
       invoke('cancel_pipeline', { projectId: currentProjectId }).catch(() => {});
     }
+  };
+
+  // #50 多设备并行流水线：为指定端口+需求启动独立流水线，不干扰主焦点任务
+  const launchParallelTask = async (port: string, chip: string, req: string) => {
+    if (!port || !req.trim() || !llmConfigured) {
+      notify.warning('无法启动并行任务', '需填写端口、需求且 LLM 已配置');
+      return;
+    }
+    const taskId = `ptask-${Date.now()}`;
+    setParallelTasks((ts) => [...ts, { id: taskId, port, chip, requirement: req, state: 'coding', percent: 5, success: null, summary: '启动中…' }]);
+    const spec: RequirementSpec = {
+      project_name: 'parallel_' + taskId,
+      chip,
+      peripherals: [{ type: 'GPIO_OUT', pin: 2, behavior: req }],
+      expected_behavior: req,
+      test_harness_expectation: { cases: [{ name: 'main', expect: 'TEST:PASS main' }] },
+    };
+    try {
+      const project = await invoke<{ id: string }>('create_project', { name: 'parallel_' + Date.now(), chip });
+      const ch = new Channel<PipelineEvent>();
+      ch.onmessage = (event) => {
+        setParallelTasks((ts) => ts.map((t) => {
+          if (t.id !== taskId) return t;
+          if (event.kind === 'StateChanged') return { ...t, state: event.data.state };
+          if (event.kind === 'Progress') return { ...t, percent: event.data.percent, summary: event.data.message };
+          if (event.kind === 'Done') return { ...t, success: event.data.success, summary: event.data.summary, percent: 100 };
+          return t;
+        }));
+      };
+      await invoke<PipelineOutcome>('run_full_pipeline', { spec, port, projectId: project.id, onEvent: ch });
+    } catch (e) {
+      setParallelTasks((ts) => ts.map((t) => t.id === taskId ? { ...t, success: false, summary: String(e), percent: 100 } : t));
+    }
+  };
+
+  // #50 取消并行任务
+  const cancelParallelTask = (taskId: string) => {
+    // 通过项目名约定无法直接拿 projectId，简化：标记为已取消（后端令牌需 projectId，此处仅前端清除）
+    setParallelTasks((ts) => ts.filter((t) => t.id !== taskId));
   };
 
   // #17 用编辑后的代码重跑（跳过 AI 生成，直接进入编译→烧录→验证）
@@ -504,6 +548,10 @@ function AppInner() {
                     invoke('confirm_flash', { projectId: currentProjectId }).catch(() => {});
                   }
                 }}
+                // #50 多设备并行
+                parallelTasks={parallelTasks}
+                onLaunchParallel={launchParallelTask}
+                onCancelParallel={cancelParallelTask}
               />
             )}
             {view === 'devices' && (

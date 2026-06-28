@@ -102,6 +102,24 @@
 .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2); }
 .compare-col-title { font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-bottom: 4px; font-weight: 600; }
 @media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+/* #50 多设备并行任务 */
+.parallel-section { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--color-border-light); }
+.parallel-section h4 { margin: 0 0 var(--space-1); font-size: var(--font-size-md); }
+.parallel-input-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.parallel-input-row select, .parallel-input-row input { flex: 1; min-width: 120px; }
+.parallel-tasks { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.parallel-task { padding: var(--space-2); border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: var(--color-bg-surface); }
+.parallel-task.success { border-color: var(--color-success); }
+.parallel-task.failed { border-color: var(--color-danger); }
+.parallel-task-head { display: flex; align-items: center; gap: var(--space-2); }
+.parallel-task-req { flex: 1; font-size: var(--font-size-xs); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parallel-task-close { border: none; background: transparent; cursor: pointer; color: var(--color-text-tertiary); font-size: 16px; }
+.parallel-task-close:hover { color: var(--color-danger); }
+.parallel-task-bar { height: 4px; background: var(--color-bg-hover); border-radius: 2px; margin: var(--space-1) 0; overflow: hidden; }
+.parallel-task-fill { height: 100%; background: var(--color-primary); transition: width 0.3s; }
+.parallel-task.success .parallel-task-fill { background: var(--color-success); }
+.parallel-task.failed .parallel-task-fill { background: var(--color-danger); }
+.parallel-task-status { font-size: var(--font-size-xs); color: var(--color-text-secondary); }
 .control-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
 .control-row label { font-weight: 500; }
 .control-row select, .control-row input {
