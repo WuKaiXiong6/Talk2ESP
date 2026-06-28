@@ -120,12 +120,18 @@ function AppInner() {
     setRunning(false);
   };
 
-  // 暂停/终止流水线（当前实现：标记停止，前端停止接收；后端因是单次 await 无法中途杀，但会尽快结束）
+  // #25 真正取消/暂停流水线：调用后端 cancel_pipeline 置取消令牌
+  const [currentProjectId, setCurrentProjectId] = useState<string>('');
   const stopPipeline = () => {
     stopFlagRef.current = true;
     setRunning(false);
-    addLog('■ 用户已请求终止（当前进行中的步骤完成后停止）');
+    addLog('■ 用户已请求终止（流水线将在当前步骤完成后停止）');
     setProgress((p) => ({ ...p, message: '正在终止…' }));
+    setThinking('');
+    // #25 通知后端置取消令牌
+    if (currentProjectId) {
+      invoke('cancel_pipeline', { projectId: currentProjectId }).catch(() => {});
+    }
   };
 
   // #17 用编辑后的代码重跑（跳过 AI 生成，直接进入编译→烧录→验证）
@@ -263,6 +269,7 @@ function AppInner() {
       const project = await invoke<{ id: string }>('create_project', {
         name: 'auto_' + Date.now(), chip: selectedChip,
       });
+      setCurrentProjectId(project.id);
       addLog(`创建项目: ${project.id}`);
 
       const ch = new Channel<PipelineEvent>();
@@ -357,6 +364,48 @@ function AppInner() {
     if (selectedPort) parts.push(selectedPort);
     document.title = parts.join(' · ');
   }, [view, running, progress.percent, selectedPort]);
+
+  // #92 全局快捷键：Ctrl+1~5 切换视图，Esc 终止运行
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+        e.preventDefault();
+        const views: View[] = ['develop', 'devices', 'projects', 'monitor', 'settings'];
+        setView(views[+e.key - 1]);
+      } else if (e.key === 'Escape' && running) {
+        stopPipeline();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [running]);
+
+  // #91 崩溃恢复：运行状态持久化到 localStorage，刷新后恢复提示
+  useEffect(() => {
+    if (running) {
+      localStorage.setItem('talk2esp-running', JSON.stringify({ requirement, selectedChip, selectedPort, ts: Date.now() }));
+    } else {
+      localStorage.removeItem('talk2esp-running');
+    }
+  }, [running, requirement, selectedChip, selectedPort]);
+  // 启动时检查上次未完成的运行
+  useEffect(() => {
+    const saved = localStorage.getItem('talk2esp-running');
+    if (saved) {
+      try {
+        const info = JSON.parse(saved);
+        const age = Date.now() - (info.ts ?? 0);
+        // 30秒内的未完成运行提示恢复
+        if (age < 30000) {
+          notify.warning('检测到上次未完成的运行', '需求已恢复，可重新启动流水线');
+          if (info.requirement) setRequirement(info.requirement);
+          if (info.selectedChip) setSelectedChip(info.selectedChip);
+          if (info.selectedPort) setSelectedPort(info.selectedPort);
+        }
+        localStorage.removeItem('talk2esp-running');
+      } catch { /* 忽略损坏数据 */ }
+    }
+  }, [notify]);
 
   return (
     <ErrorBoundary>

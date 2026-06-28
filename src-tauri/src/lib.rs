@@ -169,6 +169,11 @@ fn make_provider() -> Result<OpenAiCompatProvider, String> {
     }
 }
 
+/// #25 全局流水线取消令牌注册表：project_id -> AtomicBool
+/// 流水线启动时注册，取消时置 true，流水线在阶段间隙检查并终止
+static CANCEL_FLAGS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicBool>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
 /// M3：通用对话
 #[tauri::command]
 async fn llm_chat(messages: Vec<ChatMessage>) -> Result<String, String> {
@@ -512,17 +517,39 @@ async fn run_full_pipeline(
     }
     let provider = Arc::new(make_provider()?);
     let storage = Arc::new(tokio::sync::Mutex::new(ProjectStorage::from_default()));
+    // #25 注册取消令牌
+    let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut flags = CANCEL_FLAGS.lock().unwrap();
+        flags.insert(project_id.clone(), cancel_flag.clone());
+    }
     let config = PipelineConfig {
-        project_id,
+        project_id: project_id.clone(),
         spec,
         port,
         auto_mode: settings.automation.mode == "full",
         skip_coding_with_code,
+        cancel_flag,
     };
-    run_pipeline(storage, provider, config, move |event| {
+    let result = run_pipeline(storage, provider, config, move |event| {
         let _ = on_event.send(event);
     })
-    .await
+    .await;
+    // 清理取消令牌
+    CANCEL_FLAGS.lock().unwrap().remove(&project_id);
+    result
+}
+
+/// #25 取消正在运行的流水线：置取消令牌，流水线在下一个阶段间隙终止
+#[tauri::command]
+fn cancel_pipeline(project_id: String) -> Result<bool, String> {
+    let flags = CANCEL_FLAGS.lock().unwrap();
+    if let Some(flag) = flags.get(&project_id) {
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(true)
+    } else {
+        Ok(false) // 无运行中的流水线
+    }
 }
 
 /// Channel 流式通信验证（M0 遗留）
@@ -591,6 +618,7 @@ pub fn run() {
             test_llm_connection,
             check_toolchain,
             run_full_pipeline,
+            cancel_pipeline,
             start_tick
         ])
         .run(tauri::generate_context!())

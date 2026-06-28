@@ -46,6 +46,9 @@ pub struct PipelineConfig {
     /// #17 跳过 AI 生成阶段，直接使用用户编辑后的代码进入编译
     /// None=默认走 AI 生成（既有行为）；Some(code)=跳过生成，用此代码
     pub skip_coding_with_code: Option<String>,
+    /// #25 取消令牌：外部置 true 时，流水线在下一个阶段间隙尽快终止
+    /// 默认为一个始终为 false 的令牌（即不取消，保持既有行为）
+    pub cancel_flag: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for PipelineConfig {
@@ -63,6 +66,7 @@ impl Default for PipelineConfig {
             port: String::new(),
             auto_mode: true,
             skip_coding_with_code: None,
+            cancel_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -107,6 +111,18 @@ where
     let mut current_code: Option<GeneratedCode> = None;
     let mut retry = RetryCounts::default();
     let pipeline_start = std::time::Instant::now();
+
+    /// #25 检查取消令牌：若已取消则发 Done 并返回错误
+    let check_cancelled = |on_event: &mut F| -> Result<(), String> {
+        if config.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            emit(on_event, PipelineEvent::Done {
+                success: false,
+                summary: "用户已取消流水线".to_string(),
+            });
+            return Err("用户已取消流水线".to_string());
+        }
+        Ok(())
+    };
 
     // ========== Coding：AI 生成代码（或使用用户编辑后的代码）==========
     let stage_start = std::time::Instant::now();
@@ -182,6 +198,8 @@ where
 
     // ========== Compiling → Flashing → Verifying 循环（含重试） ==========
     loop {
+        // #25 每轮循环开始检查取消
+        check_cancelled(&mut on_event)?;
         let code = current_code.as_ref().ok_or("无代码可编译")?;
 
         // 编译

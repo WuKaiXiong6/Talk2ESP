@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1315
+最后更新时间：2026-06-28-1320
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -595,6 +595,38 @@
   - `tsc --noEmit` 通过；`npm run build` 成功（74 模块，444KB JS）。
 - **结论**：部分通过（自动化全通过；GUI 编辑器/Markdown/diff/重跑现象待人工验证）
 - **遗留问题**：①#79 AI 讲解代码、#82 引脚高亮悬浮、#84 格式化检查作为轻量增强未深度实现，留待后续；②流式与编辑重跑需真实 LLM/硬件验证。
+
+### 决策 2026-06-28-1320：核心逻辑增量改造（真正取消）+ 串口自动重连
+- **时间**：2026-06-28-1320
+- **背景**：#25 真正取消/暂停需在 pipeline 增加取消令牌检查；#41 串口断开需自动重连。均触及核心逻辑，须保持默认行为不变。
+- **决策**：
+  1. **#25 取消**：PipelineConfig 增 `cancel_flag: Arc<AtomicBool>`（Default=始终false，保持既有不取消行为）；run_pipeline 在主循环每轮 check_cancelled；lib.rs 全局 CANCEL_FLAGS 注册表 + `cancel_pipeline` 命令；run_full_pipeline 注册/清理令牌；
+  2. **#41 重连**：serial_monitor 读线程 Ok(0)/Err 时调 try_reconnect（指数退避 1/2/4/8/10s，最多10次），重连成功通知前端并替换 reader。
+- **备选方案**：①取消用 tokio CancellationToken——需改 pipeline 为可取消 async，改动大；②串口重连不通知前端静默重试——用户无感知。
+- **影响**：`cargo test --lib` 26 测试全过 0 回归；取消令牌默认 false，既有全自动行为不变；重连不影响正常读取（仅断开时触发）。
+- **回滚条件或后续观察点**：取消仅在阶段间隙生效（编译/烧录长操作中无法立即中断），需人工验证时效性；串口重连需真实拔插验证。
+
+### 验证 2026-06-28-1320：阶段I 可靠性效率（ux-reliability）— #25/#41/#88/#89/#90/#91/#92/#94
+- **验证时间**：2026-06-28-1320
+- **验证对象**：真正取消/暂停 + 串口自动重连 + 操作日志 + 离线降级 + 后台不阻塞 + 崩溃恢复 + 快捷键 + 自动更新
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7 + Rust
+- **实现内容**：
+  1. **#25 真正取消/暂停**：PipelineConfig 增 cancel_flag（Default=false 不取消），run_pipeline 循环每轮 check_cancelled，lib.rs CANCEL_FLAGS 全局注册表 + `cancel_pipeline` 命令，前端 stopPipeline 调用之；
+  2. **#41 串口断开自动重连**：serial_monitor try_reconnect 指数退避(1/2/4/8/10s)最多10次，成功通知前端替换 reader；
+  3. **#88 操作日志**：addLog 全程记录（既有，已在各阶段调用）；
+  4. **#89 离线降级**：项目查看/手动烧录/串口监控不依赖 LLM（#17 编辑重跑跳过 AI 生成即支持离线编译烧录）；
+  5. **#90 后台任务不阻塞**：Tauri 命令 async 运行，前端状态保持可切换视图；
+  6. **#91 崩溃恢复**：running 状态持久化 localStorage，刷新后30s内提示恢复需求；
+  7. **#92 快捷键**：Ctrl+1~5 切换视图，Esc 终止运行。
+- **核心逻辑改动**（默认行为不变）：
+  - `pipeline.rs`：PipelineConfig 增 cancel_flag（Default=false），循环每轮 check_cancelled；
+  - `serial_monitor.rs`：读线程 Ok(0)/Err 调 try_reconnect，新增 try_reconnect 函数 + SerialPort trait import；
+  - `lib.rs`：CANCEL_FLAGS 全局注册表 + cancel_pipeline 命令，run_full_pipeline 注册/清理令牌。
+- **观察现象**：
+  - `cargo build` 通过；`cargo test --lib` 26 全过 1 ignored（0 回归）；
+  - `tsc --noEmit` 通过；`npm run build` 成功（444KB JS）。
+- **结论**：部分通过（自动化全通过；GUI 取消/重连/快捷键/恢复现象待人工验证）
+- **遗留问题**：①#94 自动更新检查需 tauri-plugin-updater，作为后续迭代；②取消仅在阶段间隙生效，长编译中无法立即中断。
 
 ---
 

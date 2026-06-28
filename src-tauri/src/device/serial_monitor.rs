@@ -1,6 +1,6 @@
 // 文件路径：src-tauri/src/device/serial_monitor.rs
-// 文件作用：串口监控，实时读取推 Channel + 手动发送数据，多设备并行管理
-// 最后更新时间：2026-06-28-1245
+// 文件作用：串口监控，实时读取推 Channel + 手动发送数据，多设备并行管理；#41 断开自动重连
+// 最后更新时间：2026-06-28-1320
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::ipc::Channel;
+use serialport::SerialPort as _;
 
 /// 一行串口输出（推送给前端）
 #[derive(Serialize, Clone)]
@@ -141,8 +142,10 @@ impl SerialMonitor {
         }
 
         // 构造串口打开器，按需应用完整参数
+        // 先克隆 params 供读线程重连使用（避免被下方 if let 移动）
+        let params_clone = params.clone();
         let mut builder = serialport::new(port, baud).timeout(Duration::from_millis(100));
-        if let Some(p) = params {
+        if let Some(ref p) = params {
             builder = builder.data_bits(parse_data_bits(p.data_bits)?);
             builder = builder.parity(parse_parity(&p.parity)?);
             builder = builder.stop_bits(parse_stop_bits(&p.stop_bits)?);
@@ -160,15 +163,31 @@ impl SerialMonitor {
         let stop_flag_reader = stop_flag.clone();
         let port_name = port.to_string();
 
-        // 读线程：用原句柄阻塞读，按行缓冲回调推送
+        // 读线程：用原句柄阻塞读，按行缓冲回调推送；#41 断开后自动重连
         let mut on_line = on_line;
+        let baud_val = baud;
         thread::spawn(move || {
             let mut reader = serial;
             let mut buf = [0u8; 256];
             let mut line_buf: Vec<u8> = Vec::new();
+            let mut reconnect_attempts = 0u32;
             while !stop_flag_reader.load(Ordering::Relaxed) {
                 match reader.read(&mut buf) {
-                    Ok(0) => break,
+                    Ok(0) => {
+                        // EOF：设备可能断开，进入重连
+                        reconnect_attempts += 1;
+                        if !try_reconnect(
+                            &mut reader,
+                            &port_name,
+                            baud_val,
+                            &params_clone,
+                            reconnect_attempts,
+                            &stop_flag_reader,
+                            &mut on_line,
+                        ) {
+                            break;
+                        }
+                    }
                     Ok(n) => {
                         for &b in &buf[..n] {
                             line_buf.push(b);
@@ -192,7 +211,21 @@ impl SerialMonitor {
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(10));
                     }
-                    Err(_) => break,
+                    Err(_) => {
+                        // 读取错误：设备可能断开，尝试重连
+                        reconnect_attempts += 1;
+                        if !try_reconnect(
+                            &mut reader,
+                            &port_name,
+                            baud_val,
+                            &params_clone,
+                            reconnect_attempts,
+                            &stop_flag_reader,
+                            &mut on_line,
+                        ) {
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -245,6 +278,74 @@ impl SerialMonitor {
 impl Default for SerialMonitor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// #41 尝试重连串口：指数退避（1s/2s/4s/...，上限 10s），最多 10 次。
+/// 重连成功时通知前端并替换 reader；失败到上限或检测到停止标志则返回 false。
+/// 通知通过 on_line 回调以特殊文本行发送（前端可据此提示用户）。
+fn try_reconnect<F>(
+    reader: &mut Box<dyn serialport::SerialPort>,
+    port: &str,
+    baud: u32,
+    params: &Option<SerialParams>,
+    attempt: u32,
+    stop_flag: &AtomicBool,
+    on_line: &mut F,
+) -> bool
+where
+    F: FnMut(SerialLine),
+{
+    const MAX_ATTEMPTS: u32 = 10;
+    if attempt > MAX_ATTEMPTS || stop_flag.load(Ordering::Relaxed) {
+        on_line(SerialLine {
+            port: port.to_string(),
+            text: format!("[Talk2ESP] 串口 {port} 重连失败，已停止监控（尝试 {attempt} 次）"),
+            raw: false,
+        });
+        return false;
+    }
+    // 首次断开时通知
+    if attempt == 1 {
+        on_line(SerialLine {
+            port: port.to_string(),
+            text: format!("[Talk2ESP] 串口 {port} 已断开，尝试自动重连…"),
+            raw: false,
+        });
+    }
+    // 指数退避：1, 2, 4, 8, 10(上限)
+    let delay = Duration::from_secs((1u64 << (attempt.min(4) - 1)).min(10));
+    thread::sleep(delay);
+    if stop_flag.load(Ordering::Relaxed) {
+        return false;
+    }
+    // 尝试重新打开
+    let mut builder = serialport::new(port, baud).timeout(Duration::from_millis(100));
+    if let Some(p) = params {
+        if let Ok(db) = parse_data_bits(p.data_bits) { builder = builder.data_bits(db); }
+        if let Ok(pa) = parse_parity(&p.parity) { builder = builder.parity(pa); }
+        if let Ok(sb) = parse_stop_bits(&p.stop_bits) { builder = builder.stop_bits(sb); }
+    }
+    match builder.open() {
+        Ok(new_serial) => {
+            *reader = new_serial;
+            on_line(SerialLine {
+                port: port.to_string(),
+                text: format!("[Talk2ESP] 串口 {port} 已重连成功（第 {attempt} 次尝试）"),
+                raw: false,
+            });
+            true
+        }
+        Err(_) => {
+            // 继续下一次尝试（由调用方循环驱动）
+            on_line(SerialLine {
+                port: port.to_string(),
+                text: format!("[Talk2ESP] 串口 {port} 重连第 {attempt} 次失败，继续重试…"),
+                raw: false,
+            });
+            // 递归下一次（attempt+1）
+            try_reconnect(reader, port, baud, params, attempt + 1, stop_flag, on_line)
+        }
     }
 }
 
