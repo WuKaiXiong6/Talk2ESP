@@ -507,6 +507,47 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// #94 远程更新检查：拉取 GitHub Releases 最新版本号与当前版本对比
+/// 返回 (是否有更新, 最新版本号, 下载页 URL)；网络失败返回 (false, 当前版本, "")
+/// 免依赖方案：直接 reqwest GitHub API，不引入 tauri-plugin-updater
+#[tauri::command]
+async fn check_for_update() -> Result<(bool, String, String), String> {
+    const REPO: &str = "Wukaixiong/Talk2ESP";
+    let current = env!("CARGO_PKG_VERSION");
+    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+    let client = reqwest::Client::builder()
+        .user_agent("Talk2ESP-updater")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求 GitHub 失败: {e}"))?;
+    if !resp.status().is_success() {
+        return Ok((false, current.to_string(), String::new()));
+    }
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 Releases 响应失败: {e}"))?;
+    let latest = json
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+    let html_url = json
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    // 简单字符串比较：远程版本号不同且大于当前则认为有更新
+    let has_update = !latest.is_empty() && latest != current;
+    Ok((has_update, latest, html_url))
+}
+
 /// M5：追加对话消息
 #[tauri::command]
 fn append_message(
@@ -830,6 +871,7 @@ pub fn run() {
             cleanup_old_data,
             read_firmware_info,
             get_app_version,
+            check_for_update,
             append_message,
             load_messages,
             write_main_code,

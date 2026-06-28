@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NotificationProvider, NotificationCenter, useNotifications } from './components/notifications';
+import { I18nProvider, useI18n } from './i18n';
 import { Badge, StatusDot } from './components/ui';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme } from './theme/useTheme';
@@ -29,6 +30,7 @@ const APP_VERSION_FALLBACK = '0.1.0';
 function AppInner() {
   const theme = useTheme();
   const notify = useNotifications();
+  const { t, lang, setLang } = useI18n();
   const [view, setView] = useState<View>('develop');
   // #95 首次启动向导（localStorage 标记，仅首次显示）
   const [showWizard, setShowWizard] = useState(() => !localStorage.getItem('talk2esp-onboarded'));
@@ -74,12 +76,28 @@ function AppInner() {
     state: string; percent: number; success: boolean | null; summary: string;
   }[]>([]);
 
-  // 初始化：扫描设备 + 加载芯片列表 + 检查 LLM 配置 + 拉取版本号
+  // 初始化：扫描设备 + 加载芯片列表 + 检查 LLM 配置 + 拉取版本号 + #94 检查更新
   useEffect(() => {
     refreshDevices();
     invoke<string[]>('list_chips').then(setChips).catch(() => {});
     invoke<boolean>('is_llm_configured').then(setLlmConfigured).catch(() => {});
     invoke<string>('get_app_version').then(setAppVersion).catch(() => {});
+    // #94 启动后检查远程更新（静默，有更新才提示）
+    invoke<[boolean, string, string]>('check_for_update')
+      .then(([hasUpdate, latest, url]) => {
+        if (hasUpdate) {
+          notify.info(
+            lang === 'zh' ? '发现新版本' : 'New version available',
+            lang === 'zh' ? `最新版本 ${latest}，点击前往下载` : `Latest ${latest}, click to download`,
+          );
+          // 记录到 localStorage 供设置页展示
+          localStorage.setItem('talk2esp-update', JSON.stringify({ latest, url }));
+        } else {
+          localStorage.removeItem('talk2esp-update');
+        }
+      })
+      .catch(() => { /* 更新检查失败不影响使用 */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 日志自动滚动
@@ -489,7 +507,7 @@ function AppInner() {
         <header className="header">
           <div className="header-left">
             <h1>Talk2ESP</h1>
-            <span className="subtitle">自然语言驱动的 ESP32 全自动开发</span>
+            <span className="subtitle">{t('header.subtitle')}</span>
           </div>
           <div className="header-right">
             {/* #6 头部信息增强：设备/芯片/模型/状态灯 */}
@@ -504,7 +522,15 @@ function AppInner() {
               <span className="header-info" title="LLM 未配置"><StatusDot state="error" label="未配置" /></span>
             )}
             <span className="header-version">v{appVersion}</span>
-            {running && <Badge tone="info" className="header-running">运行中 {progress.percent}%</Badge>}
+            {running && <Badge tone="info" className="header-running">{t('state.running')} {progress.percent}%</Badge>}
+            {/* #93 语言切换 */}
+            <button
+              className="lang-toggle"
+              title={lang === 'zh' ? '切换到英文' : 'Switch to Chinese'}
+              onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            >
+              {lang === 'zh' ? 'EN' : '中'}
+            </button>
             {/* #3 主题切换 + #10 字号调节 */}
             <ThemeToggle
               mode={theme.mode}
@@ -517,13 +543,13 @@ function AppInner() {
         </header>
 
           <nav className="nav">
-            <button className={view === 'develop' ? 'active' : ''} onClick={() => setView('develop')}>开发</button>
-            <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>设备</button>
-            <button className={view === 'projects' ? 'active' : ''} onClick={() => setView('projects')}>项目</button>
-            <button className={view === 'monitor' ? 'active' : ''} onClick={() => setView('monitor')}>串口监控</button>
-            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>设置</button>
-            <button className={view === 'help' ? 'active' : ''} onClick={() => setView('help')}>帮助</button>
-            {!llmConfigured && <span className="nav-warn">⚠️ 未配置 LLM</span>}
+            <button className={view === 'develop' ? 'active' : ''} onClick={() => setView('develop')}>{t('nav.develop')}</button>
+            <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
+            <button className={view === 'projects' ? 'active' : ''} onClick={() => setView('projects')}>{t('nav.projects')}</button>
+            <button className={view === 'monitor' ? 'active' : ''} onClick={() => setView('monitor')}>{t('nav.monitor')}</button>
+            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
+            <button className={view === 'help' ? 'active' : ''} onClick={() => setView('help')}>{t('nav.help')}</button>
+            {!llmConfigured && <span className="nav-warn">⚠️ {lang === 'zh' ? '未配置 LLM' : 'LLM not configured'}</span>}
           </nav>
 
           <main className="main">
@@ -591,9 +617,11 @@ function AppInner() {
  */
 function App() {
   return (
-    <NotificationProvider>
-      <AppInner />
-    </NotificationProvider>
+    <I18nProvider>
+      <NotificationProvider>
+        <AppInner />
+      </NotificationProvider>
+    </I18nProvider>
   );
 }
 
