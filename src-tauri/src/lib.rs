@@ -243,6 +243,41 @@ async fn llm_generate_code(spec: RequirementSpec) -> Result<GeneratedCode, Strin
     provider.generate_code(&spec).await
 }
 
+/// #80 多模型对比生成：用指定的模型/base_url/api_key 临时构造 provider 生成一版代码
+/// override 为 None 的字段回退到当前设置，便于「仅换模型名」对比
+#[tauri::command]
+async fn llm_generate_code_with_model(
+    spec: RequirementSpec,
+    model: Option<String>,
+    base_url: Option<String>,
+    api_key: Option<String>,
+    max_tokens: Option<u32>,
+) -> Result<GeneratedCode, String> {
+    let settings = settings::load_settings();
+    let base = if settings::is_llm_configured(&settings) {
+        ai::openai_compat::OpenAiCompatConfig {
+            base_url: settings.llm.base_url.clone(),
+            api_key: settings.llm.api_key.clone(),
+            model: settings.llm.model.clone(),
+            max_tokens: settings.llm.clamped_max_tokens(),
+        }
+    } else {
+        // 回退 env，再按 override 覆盖
+        let p = OpenAiCompatProvider::from_env()?;
+        p.config().clone()
+    };
+    let cfg = ai::openai_compat::OpenAiCompatConfig {
+        base_url: base_url.unwrap_or(base.base_url),
+        api_key: api_key.unwrap_or(base.api_key),
+        model: model.unwrap_or(base.model),
+        max_tokens: max_tokens
+            .map(|m| m.clamp(256, 128000))
+            .unwrap_or(base.max_tokens),
+    };
+    let provider = OpenAiCompatProvider::new(cfg);
+    provider.generate_code(&spec).await
+}
+
 /// M3：诊断错误
 #[tauri::command]
 async fn llm_diagnose(error: String, context_code: String) -> Result<FixSuggestion, String> {
@@ -743,6 +778,7 @@ pub fn run() {
             llm_chat_stream,
             llm_draft_requirement,
             llm_generate_code,
+            llm_generate_code_with_model,
             llm_diagnose,
             llm_judge,
             check_pins,

@@ -91,6 +91,11 @@ impl OpenAiCompatProvider {
         Ok(Self::new(OpenAiCompatConfig::from_env()?))
     }
 
+    /// #80 获取配置引用（多模型对比时用于回退基础配置）
+    pub fn config(&self) -> &OpenAiCompatConfig {
+        &self.config
+    }
+
     /// 底层 chat 调用，返回助手回复文本
     /// 含重试机制（最多3次）：LLM 偶发返回空 content（推理模型服务端异常/限流）时自动重试
     async fn chat_raw(&self, messages: Vec<ChatMessage>) -> Result<String, String> {

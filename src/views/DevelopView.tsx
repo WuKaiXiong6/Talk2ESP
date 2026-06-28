@@ -1,6 +1,6 @@
 // 文件路径：src/views/DevelopView.tsx
-// 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照
-// 最后更新时间：2026-06-28-1240
+// 文件作用：开发视图——设备选择/需求输入/流水线时间线/代码展示/对话与日志分离/失败指引/思考可视化/历史快照/按钮内联阶段(#21)
+// 最后更新时间：2026-06-29-0130
 
 import { useEffect, useState, type RefObject } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,6 +17,20 @@ import {
 import { RequirementExamples } from '../components/RequirementExamples';
 import { ChatMessage } from '../components/ChatMessage';
 import { checkCodeFormat, extractPinRefs, classifyPin } from '../utils/codeCheck';
+
+/// #21 流水线状态 → 按钮内联显示的阶段名
+const STATE_LABEL: Record<string, string> = {
+  coding: '正在生成代码…',
+  compiling: '正在编译…',
+  flashingconfirm: '等待确认烧录…',
+  flashing: '正在烧录…',
+  verifying: '正在验证…',
+  archived: '已完成',
+  failed: '已失败',
+};
+function stageLabel(state: string): string {
+  return STATE_LABEL[state] || '运行中…';
+}
 
 /// 开发视图属性
 export interface DevelopViewProps {
@@ -85,6 +99,10 @@ export function DevelopView(props: DevelopViewProps) {
   const [editedCode, setEditedCode] = useState('');
   // #83 diff 显示
   const [showDiff, setShowDiff] = useState(false);
+  // #80 多模型对比
+  const [compareModel, setCompareModel] = useState('');
+  const [comparing, setComparing] = useState(false);
+  const [compareResult, setCompareResult] = useState<{ current: string; other: string; otherModel: string } | null>(null);
   // 最近一次 AI 修复前的代码（用于 diff）；首版生成时为空
   const lastFixedCode = '';
   // #84 格式检查 + #82 引脚高亮
@@ -118,6 +136,30 @@ export function DevelopView(props: DevelopViewProps) {
 
   // #23 失败后下一步指引
   const failureGuidance = outcome && !outcome.success ? deriveFailureGuidance(outcome, failReasonMap) : null;
+
+  // #80 多模型对比：用当前模型与用户指定的对比模型各生成一版代码并排展示
+  const runCompare = async () => {
+    if (!requirement.trim() || !compareModel.trim()) return;
+    setComparing(true);
+    setCompareResult(null);
+    const spec = {
+      project_name: 'compare', chip: selectedChip,
+      peripherals: [{ type: 'GPIO_OUT', pin: 2, behavior: requirement }],
+      expected_behavior: requirement,
+      test_harness_expectation: { cases: [{ name: 'main', expect: 'TEST:PASS main' }] },
+    };
+    try {
+      // 并行：当前模型 vs 对比模型（仅覆盖 model 名，复用当前 base_url/api_key）
+      const [cur, other] = await Promise.all([
+        invoke<{ main_ino: string; explanation: string }>('llm_generate_code', { spec }),
+        invoke<{ main_ino: string; explanation: string }>('llm_generate_code_with_model', { spec, model: compareModel }),
+      ]);
+      setCompareResult({ current: cur.main_ino, other: other.main_ino, otherModel: compareModel });
+    } catch (e) {
+      setCompareResult({ current: `生成失败: ${e}`, other: '', otherModel: compareModel });
+    }
+    setComparing(false);
+  };
 
   return (
     <div className="develop-view">
@@ -180,7 +222,8 @@ export function DevelopView(props: DevelopViewProps) {
               与 AI 对话澄清
             </Button>
             <Button variant="primary" onClick={onRun} disabled={running || !requirement.trim() || !selectedPort}>
-              {running ? '运行中…' : '🚀 一键全自动开发'}
+              {/* #21 运行中按钮内联显示当前阶段名 */}
+              {running ? stageLabel(currentState) : '🚀 一键全自动开发'}
             </Button>
             {running && (
               <Button variant="danger" onClick={onStop}>⏹ 终止</Button>
@@ -340,6 +383,34 @@ export function DevelopView(props: DevelopViewProps) {
             )}
           </div>
         )}
+
+        {/* #80 多模型对比 */}
+        <div className="compare-section">
+          <div className="compare-header">
+            <h4>🔄 多模型对比</h4>
+            <input
+              value={compareModel}
+              onChange={(e) => setCompareModel(e.target.value)}
+              placeholder="对比模型名，如 glm-4-plus / deepseek-chat"
+              disabled={comparing || !requirement.trim()}
+            />
+            <Button variant="secondary" size="sm" onClick={runCompare} loading={comparing} disabled={!requirement.trim() || !compareModel.trim()}>
+              对比生成
+            </Button>
+          </div>
+          {compareResult && (
+            <div className="compare-grid">
+              <div className="compare-col">
+                <div className="compare-col-title">当前模型</div>
+                <CodeBlock code={compareResult.current} language="arduino" maxHeight="280px" title="current" />
+              </div>
+              <div className="compare-col">
+                <div className="compare-col-title">{compareResult.otherModel}</div>
+                <CodeBlock code={compareResult.other || '（生成失败或为空）'} language="arduino" maxHeight="280px" title={compareResult.otherModel} />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="chat-log ui-card">
