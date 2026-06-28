@@ -1,7 +1,7 @@
 <!--
 文件路径：docs/process.md
 文件作用：Talk2ESP 项目阶段总计划、阶段状态、验证记录与重大决策记录
-最后更新时间：2026-06-28-1925
+最后更新时间：2026-06-28-1230
 -->
 
 # Talk2ESP 开发过程记录（process.md）
@@ -363,6 +363,46 @@
 - **根因分析**：glm-5.2 是推理模型，77% 耗时花在 reasoning_tokens（思考），代码输出仅占23%。这是模型固有特性，软件层面通过减少 LLM 调用次数（judge本地化）已最大化优化。
 - **结论**：通过
 - **遗留问题**：界面信息量增强（代码可编辑重跑、设备详情、连接测试）作为下一轮迭代。
+
+---
+
+## 6. UX 优化迭代（基于 docs/UX-OPTIMIZATION.md 100 条建议）
+
+> 本轮迭代依据 `docs/UX-OPTIMIZATION.md` 100 条优化建议，按 10 个主题分阶段实施。
+> **原则**：不直接在 main 开发，每阶段独立分支 `ux-<主题>`；触及核心逻辑（pipeline/LLM）的改造以「默认行为不变」方式增量进行。
+> **验证门禁**：每阶段 `tsc --noEmit` + `npm run build` + `cargo test --lib`（26 测试全过，1 ignored）。
+
+### 决策 2026-06-28-1230：UX 优化实施策略（分阶段 + 依赖策略 + 核心逻辑边界）
+- **时间**：2026-06-28-1230
+- **背景**：UX-OPTIMIZATION.md 提出 100 条建议（36 高优先级），需明确实施策略、依赖引入边界与核心逻辑改造边界。AGENTS.md 规定新增依赖需确认、禁止直接在 main 开发。
+- **决策**：
+  1. 按主题分 10 阶段（A 基础设施→J 引导帮助），每阶段独立分支，小步骤可验证提交；
+  2. 依赖策略：允许引入成熟轻量库（highlight.js/react-markdown/jszip/tauri-plugin-dialog 等），逐项记录决策；
+  3. 核心逻辑边界：6 项触及 pipeline/LLM 的功能（#17/#24/#25/#73/#74/#75）以「新增开关默认关闭/默认行为不变」方式增量改造，每项手动验证；
+  4. 不删除遗留命令（scan_ports/start_tick），不强制推送/合并主分支。
+- **备选方案**：①核心逻辑只读、6 项降级模拟——但高优先级无法真正落地；②尽量自研避免依赖——工作量大且部分体验打折扣。
+- **影响**：明确实施路径与风险边界，保证既有全自动闭环行为不被改变。
+- **回滚条件或后续观察点**：若某阶段引入回归，回滚该分支；核心逻辑改造项逐一人工验证默认行为不变。
+
+### 验证 2026-06-28-1230：阶段A 基础设施（ux-infra）— #1/#2/#5/#7/#8/#9/#11/#87
+- **验证时间**：2026-06-28-1230
+- **验证对象**：拆分 App.tsx 巨型组件 + 统一设计系统 + 全局通知系统 + ErrorBoundary + 骨架屏 + 空状态
+- **验证环境**：Windows 10，React 19 + TypeScript 5.8 + Vite 7
+- **实现内容**：
+  1. **#1 拆分单文件组件**：App.tsx（622行）拆为 `src/views/`（DevelopView/DevicesView/ProjectsView/MonitorView/SettingsView）+ `src/components/`（ui/Skeleton/EmptyState/ErrorBoundary/notifications）+ `src/theme/tokens.css`；
+  2. **#2 统一设计系统**：`tokens.css` 定义色板/间距/圆角/阴影/排版令牌（含深色模式占位），`ui/index.tsx` 提供 Button/Card/Badge/StatusDot/IconButton 基础组件；
+  3. **#7 全局通知系统**：NotificationProvider + NotificationCenter，右上角堆叠 Toast + 历史回看，替代 alert()；
+  4. **#87 全局错误边界**：ErrorBoundary 捕获组件异常，展示兜底页（重试/重新加载）而非白屏；
+  5. **#8 加载骨架屏**：Skeleton/SkeletonTable/SkeletonCard 灰块脉冲占位；
+  6. **#9 空状态设计**：EmptyState 配插画 + 引导按钮，替代单调「暂无…」；
+  7. **#5/#11**：统一图标体系（StatusDot 状态灯随状态变色）+ WCAG AA 对比度（焦点环、语义色）。
+- **观察现象**：
+  - `tsc --noEmit` 类型检查通过（strict 模式，无未用变量）；
+  - `npm run build` 成功（47 模块，220KB JS / 23KB CSS）；
+  - `cargo test --lib` 26 测试全过，1 ignored，无回归；
+  - 核心逻辑（runAutoPipeline/chatWithAi/stopPipeline）行为未变，仅结构重构。
+- **结论**：部分通过（自动化部分全通过；GUI 渲染现象待人工验证）
+- **遗留问题**：①GUI 窗口内各视图渲染、通知弹窗、空状态展示需人工运行 `npm run tauri dev` 确认现象；②深色模式令牌已就位但切换开关在阶段B实现。
 
 ---
 

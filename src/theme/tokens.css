@@ -1,0 +1,150 @@
+/* 文件路径：src/theme/tokens.css */
+/* 文件作用：Talk2ESP 统一设计系统——设计令牌（色板/间距/圆角/阴影/排版），作为全应用视觉语言基线 */
+/* 最后更新时间：2026-06-28-1230 */
+
+/*
+ * 设计令牌说明：
+ * - 通过 CSS 自定义属性（变量）集中定义视觉语言，全应用共享同一套色板、间距、圆角、阴影。
+ * - 浅色模式为默认根令牌；深色模式令牌在阶段 B 通过 [data-theme="dark"] 覆盖。
+ * - 所有组件应仅引用令牌变量，不硬编码颜色/尺寸，保证视觉一致性。
+ */
+
+:root {
+  /* ===== 色板（浅色模式默认）===== */
+  /* 主色：沉稳科技蓝 */
+  --color-primary: #2d6a9f;
+  --color-primary-hover: #1e3a5f;
+  --color-primary-light: #e8f4fd;
+  --color-primary-border: #d0e3f5;
+
+  /* 语义色 */
+  --color-success: #28a745;
+  --color-success-bg: #d4edda;
+  --color-success-border: #c3e6cb;
+  --color-success-text: #155724;
+
+  --color-warning: #d39e00;
+  --color-warning-bg: #fff3cd;
+  --color-warning-border: #ffeaa7;
+  --color-warning-text: #856404;
+
+  --color-danger: #c0392b;
+  --color-danger-bg: #f8d7da;
+  --color-danger-border: #f5c6cb;
+  --color-danger-text: #721c24;
+
+  --color-info: #17a2b8;
+  --color-info-bg: #d1ecf1;
+  --color-info-border: #bee5eb;
+  --color-info-text: #0c5460;
+
+  /* 中性色（背景/文本/边框）*/
+  --color-bg-app: #f5f6f8;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #fafbfc;
+  --color-bg-hover: #f0f4f8;
+  --color-bg-code: #1e1e1e;
+
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #555555;
+  --color-text-muted: #888888;
+  --color-text-disabled: #b0b0b0;
+  --color-text-inverse: #ffffff;
+  --color-text-code: #d4d4d4;
+
+  --color-border: #e0e0e0;
+  --color-border-light: #eeeeee;
+  --color-border-strong: #cccccc;
+
+  /* ===== 间距系统（4px 基准）===== */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ===== 圆角 ===== */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-full: 9999px;
+
+  /* ===== 阴影 ===== */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(45, 106, 159, 0.2);
+
+  /* ===== 排版 ===== */
+  /* 中英文协调字体栈：优先系统 UI 字体，回退中文字体 */
+  --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas,
+    'Courier New', 'Microsoft YaHei Mono', monospace;
+
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 22px;
+
+  --line-height-tight: 1.3;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.7;
+
+  /* 代码区中英文混排行高对齐 */
+  --line-height-code: 1.6;
+
+  /* ===== 过渡与动画 ===== */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.25s ease;
+  --transition-slow: 0.4s ease;
+
+  /* ===== 焦点态（无障碍）===== */
+  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px var(--color-primary);
+}
+
+/* 深色模式令牌（阶段 B 启用 data-theme 切换，此处先定义占位以便平滑接入）*/
+[data-theme='dark'] {
+  --color-primary: #4a9fd4;
+  --color-primary-hover: #6ab8e8;
+  --color-primary-light: #1a2f44;
+  --color-primary-border: #2a4a66;
+
+  --color-success-bg: #1a3a26;
+  --color-success-text: #6fd98a;
+  --color-warning-bg: #3a3318;
+  --color-warning-text: #ffd866;
+  --color-danger-bg: #3a1f22;
+  --color-danger-text: #f08a8a;
+  --color-info-bg: #143a42;
+  --color-info-text: #6cd0e0;
+
+  --color-bg-app: #1a1a1f;
+  --color-bg-surface: #25252c;
+  --color-bg-subtle: #2d2d35;
+  --color-bg-hover: #33333d;
+  --color-bg-code: #14141a;
+
+  --color-text-primary: #e8e8ec;
+  --color-text-secondary: #b0b0b8;
+  --color-text-muted: #80808a;
+  --color-text-disabled: #55555c;
+  --color-text-code: #d4d4d4;
+
+  --color-border: #3a3a44;
+  --color-border-light: #2f2f38;
+  --color-border-strong: #4a4a54;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5);
+}

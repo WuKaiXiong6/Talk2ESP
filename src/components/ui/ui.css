@@ -1,0 +1,238 @@
+/* 文件路径：src/components/ui/ui.css */
+/* 文件作用：统一设计系统基础组件样式——按钮/卡片/徽章/状态灯 */
+/* 最后更新时间：2026-06-28-1230 */
+
+/* ===== 按钮 ===== */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+    opacity var(--transition-fast);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.ui-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.ui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-btn-sm {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.ui-btn-md {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-base);
+}
+
+.ui-btn-lg {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--font-size-lg);
+}
+
+.ui-btn-primary {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.ui-btn-secondary {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
+}
+
+.ui-btn-secondary:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+}
+
+.ui-btn-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  border-color: var(--color-danger-border);
+}
+
+.ui-btn-danger:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: var(--color-text-inverse);
+}
+
+.ui-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
+}
+
+.ui-btn-ghost:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.ui-btn-loading {
+  pointer-events: none;
+}
+
+.ui-btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-full);
+  animation: ui-spin 0.6s linear infinite;
+}
+
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== 卡片 ===== */
+.ui-card {
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+}
+
+.ui-card-interactive {
+  cursor: pointer;
+  transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.ui-card-interactive:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+/* ===== 徽章 ===== */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.ui-badge-primary {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.ui-badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.ui-badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.ui-badge-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.ui-badge-info {
+  background: var(--color-info-bg);
+  color: var(--color-info-text);
+}
+
+/* ===== 状态指示灯 ===== */
+.ui-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.ui-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.ui-status-idle .ui-status-dot {
+  background: var(--color-text-muted);
+}
+
+.ui-status-running .ui-status-dot {
+  background: var(--color-info);
+  animation: ui-status-pulse 1.2s ease-in-out infinite;
+}
+
+.ui-status-success .ui-status-dot {
+  background: var(--color-success);
+}
+
+.ui-status-error .ui-status-dot {
+  background: var(--color-danger);
+}
+
+.ui-status-warning .ui-status-dot {
+  background: var(--color-warning);
+}
+
+@keyframes ui-status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+/* ===== 图标按钮 ===== */
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  padding: 0;
+}
+
+.ui-icon-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.ui-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
